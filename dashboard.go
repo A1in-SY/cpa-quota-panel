@@ -268,8 +268,9 @@ h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
   color:var(--qp-text-muted);letter-spacing:.3px;white-space:nowrap;margin-left:auto;align-self:center}
 .entry-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:2px}
 .badge{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 9px;border-radius:var(--qp-radius-full);border:1px solid;font-weight:600;white-space:nowrap}
-.badge.type{color:var(--qp-slate-dark);background:var(--qp-slate-bg);border-color:var(--qp-slate-bd)}
+.badge.type{background:var(--qp-surface-strong,#fff);border:0;padding:2px;line-height:0;border-radius:6px}
 .badge.type svg{width:14px;height:14px;display:block}
+.badge.type.fallback{color:var(--qp-slate-dark);background:var(--qp-slate-bg);border:1px solid var(--qp-slate-bd);padding:2px 9px;line-height:1.6;border-radius:var(--qp-radius-full)}
 .badge.fresh{color:var(--qp-green-dark);background:var(--qp-green-bg);border-color:var(--qp-green-bd)}
 .badge.stale{color:var(--qp-amber-dark);background:var(--qp-amber-bg);border-color:var(--qp-amber-bd)}
 .badge.err{color:var(--qp-red-dark);background:var(--qp-red-bg);border-color:var(--qp-red-bd)}
@@ -392,7 +393,7 @@ func renderEntry(b *strings.Builder, e pageEntry) {
 		if ic := providerTypeIcon(t); ic != "" {
 			b.WriteString(`<span class="badge type" title="` + html.EscapeString(t) + `">` + ic + `</span>`)
 		} else {
-			b.WriteString(`<span class="badge type">` + html.EscapeString(t) + `</span>`)
+			b.WriteString(`<span class="badge type fallback">` + html.EscapeString(t) + `</span>`)
 		}
 	}
 	if e.Fresh {
