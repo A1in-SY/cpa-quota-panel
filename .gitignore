@@ -1,0 +1,21 @@
+# Build artifacts / binaries
+plugins/
+*.so
+*.dylib
+*.h
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local config / secrets
+config.yaml
+*.pem
+*_local*.yaml
+.env
+
+# OS junk
+.DS_Store
+
+# Misc
+*.log

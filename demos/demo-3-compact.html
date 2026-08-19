@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度面板 Demo ③ · 紧凑数据密度（CPAMP 风格）</title>
+<style>
+:root{
+  --app-bg:#eff2f7; --app-bg-gradient:linear-gradient(120deg,#f0f7ff 0%,#e7f2ff 50%,#edf7ff 100%);
+  --app-surface:rgba(255,255,255,.9); --app-surface-muted:rgba(255,255,255,.62);
+  --app-border:rgba(15,23,42,.08); --app-border-strong:rgba(15,23,42,.12);
+  --app-text-primary:#2c3e50; --app-text-regular:#5f6c7b; --app-text-muted:#8b95a6;
+  --primary-color:#3b82f6; --primary-hover:#60a5fa; --primary-active:#2563eb;
+  --data-green-base:#22c55e; --data-green-dark-2:#16a34a; --data-green-light-8:#dcfce7; --data-green-light-9:#f0fdf4;
+  --data-amber-base:#f59e0b; --data-amber-dark-2:#d97706; --data-amber-light-8:#fef3c7; --data-amber-light-9:#fffbeb;
+  --data-red-base:#ef4444; --data-red-dark-2:#dc2626; --data-red-light-8:#fee2e2; --data-red-light-9:#fef2f2;
+  --data-blue-base:#3b82f6; --data-blue-dark-2:#2563eb; --data-blue-light-8:#dbeafe; --data-blue-light-9:#eff6ff;
+  --data-slate-dark-2:#475569; --data-slate-light-7:#e2e8f0; --data-slate-light-8:#f1f5f9; --data-slate-light-9:#f8fafc;
+  --app-radius-lg:20px; --app-radius-md:12px; --app-radius-sm:8px; --app-radius-full:9999px;
+  --app-gap:18px; --app-blur:20px;
+  --data-track-bg:var(--data-slate-light-7);
+}
+*{box-sizing:border-box}
+html,body{width:100%;min-height:100%}
+body{margin:0;color:var(--app-text-primary);font:14px/1.55 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:var(--app-bg);background-image:var(--app-bg-gradient);background-attachment:fixed;min-height:100vh;padding:24px}
+.main{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:var(--app-gap)}
+
+.head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--app-radius-lg);
+  backdrop-filter:blur(var(--app-blur));-webkit-backdrop-filter:blur(var(--app-blur));padding:18px 22px}
+h1{font-size:19px;margin:0}
+.sub{color:var(--app-text-muted);font-size:12px;margin:2px 0 0}
+.tools{display:flex;align-items:center;gap:12px}
+.btn{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 14px;border-radius:var(--app-radius-md);
+  border:0;font-size:13px;font-weight:600;cursor:pointer;color:#fff;background:var(--primary-active);transition:all .15s ease}
+.btn:hover{background:var(--primary-color);transform:translateY(-1px)}
+.btn.ghost{background:var(--app-surface-muted);color:var(--app-text-regular);border:1px solid var(--app-border)}
+.btn.ghost:hover{background:var(--data-blue-light-9);color:var(--primary-active);border-color:var(--data-blue-light-8)}
+.spin{display:none;width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;animation:spin .8s linear infinite}
+.btn.loading .spin{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 顶部 stat 行 */
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:12px}
+@media(max-width:900px){.stats{grid-template-columns:repeat(3,1fr)}}
+.stat{background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--app-radius-md);padding:12px 14px;
+  backdrop-filter:blur(var(--app-blur));-webkit-backdrop-filter:blur(var(--app-blur))}
+.stat .label{color:var(--app-text-muted);font-size:11px}
+.stat .value{font-weight:800;font-size:18px;font-variant-numeric:tabular-nums}
+.stat .value.green{color:var(--data-green-dark-2)}
+.stat .value.red{color:var(--data-red-dark-2)}
+.stat .value.blue{color:var(--data-blue-dark-2)}
+
+/* tabs */
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{height:32px;padding:0 13px;border-radius:var(--app-radius-full);border:1px solid var(--app-border);
+  background:var(--app-surface);color:var(--app-text-regular);font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.tab.active{background:var(--primary-active);border-color:var(--primary-active);color:#fff}
+.tab .count{font-size:11px;opacity:.7}
+
+/* 列表（紧凑行展开） */
+.panel{background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--app-radius-lg);
+  backdrop-filter:blur(var(--app-blur));-webkit-backdrop-filter:blur(var(--app-blur));overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(120px,190px) minmax(0,1fr) auto;gap:16px;align-items:center;
+  padding:13px 20px;border-top:1px solid var(--app-border)}
+.row:first-child{border-top:0}
+.row:hover{background:rgba(59,130,246,.05)}
+.row .left{display:flex;align-items:center;gap:10px;min-width:0}
+.row .icon{width:34px;height:34px;border-radius:10px;color:#fff;display:grid;place-items:center;font-weight:700;flex:0 0 34px}
+.row .lname{font-weight:700;font-size:14px;white-space:nowrap}
+.row .lmeta{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px}
+.badge{display:inline-flex;align-items:center;gap:3px;font-size:10.5px;padding:1px 8px;border-radius:var(--app-radius-full);border:1px solid;font-weight:600;white-space:nowrap}
+.badge.type{color:var(--data-slate-dark-2);background:var(--data-slate-light-9);border-color:var(--data-slate-light-7)}
+.badge.key{color:var(--data-slate-dark-2);background:var(--data-slate-light-9);border-color:var(--data-slate-light-7);font-family:ui-monospace,Menlo,monospace}
+.badge.fresh{color:var(--data-green-dark-2);background:var(--data-green-light-9);border-color:var(--data-green-light-8)}
+.badge.stale{color:var(--data-amber-dark-2);background:var(--data-amber-light-9);border-color:var(--data-amber-light-8)}
+.badge.err{color:var(--data-red-dark-2);background:var(--data-red-light-9);border-color:var(--data-red-light-8)}
+
+/* 行内：百分比窗口 3 格 */
+.wins{display:flex;gap:18px;align-items:center;min-width:0}
+.win{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:3px}
+.win .wh{display:flex;justify-content:space-between;font-size:11px;color:var(--app-text-regular);gap:6px}
+.win .wh b{font-variant-numeric:tabular-nums;color:var(--app-text-primary)}
+.bar{height:7px;border-radius:var(--app-radius-full);background:var(--data-track-bg);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:var(--app-radius-full);background:var(--data-green-base)}
+.bar>i.amber{background:var(--data-amber-base)}
+.bar>i.red{background:var(--data-red-base)}
+.win .rst{font-size:10.5px;color:var(--app-text-muted)}
+/* 行内：余额 */
+.bal{display:flex;flex-direction:column;align-items:flex-end;gap:1px;text-align:right}
+.bal .amt{font-size:18px;font-weight:800;color:var(--data-green-dark-2);font-variant-numeric:tabular-nums}
+.bal .amt.red{color:var(--data-red-dark-2)}
+.bal .bd{font-size:11px;color:var(--app-text-muted);font-variant-numeric:tabular-nums}
+/* 行内：错误短标 */
+.rowerr{color:var(--data-red-dark-2);font-size:12px;display:flex;align-items:center;gap:6px;max-width:340px}
+.row .expand{color:var(--app-text-muted);font-size:12px;white-space:nowrap}
+.empty{color:var(--app-text-muted);text-align:center;padding:30px 0;display:none}
+@media(max-width:860px){.row{grid-template-columns:1fr;gap:10px}.bal{align-items:flex-start;text-align:left}}
+</style>
+</head>
+<body>
+<div class="main">
+  <div class="head">
+    <div><h1>额度面板</h1><p class="sub">只读额度查询 · 数据来源：各厂商额度接口 · 条目较多时用紧凑视图</p></div>
+    <div class="tools"><span class="stat" style="padding:0;border:0;backdrop-filter:none;background:transparent"><span class="label" id="refreshAt" style="display:block">刚刚</span></span>
+      <button class="btn ghost" id="z">列表/展开切换</button>
+      <button class="btn" id="refresh"><span class="spin"></span>刷新</button></div>
+  </div>
+
+  <div class="stats" id="stats"></div>
+  <div class="tabs" id="tabs"></div>
+
+  <div class="panel" id="panel"></div>
+  <div class="empty" id="emptyWrap"></div>
+</div>
+
+<script>
+const SOURCES=[
+  {id:'opencode',name:'OpenCode',color:'#3b82f6'},
+  {id:'deepseek',name:'DeepSeek',color:'#06b6d4'},
+  {id:'minimax',name:'MiniMax',color:'#ef4444'},
+];
+const ENTRY=[
+  {vendor:'opencode',key:'…a1B2c3a',types:['codex','claude'],fresh:true,
+   windows:{rolling:{label:'5h',used:42},weekly:{label:'周',used:28},monthly:{label:'月',used:11}},
+   resets:{rolling:'23:40',weekly:'4.2h',monthly:'11天'}},
+  {vendor:'opencode',key:'…d4E5f6',types:['codex'],fresh:true,
+   windows:{rolling:{label:'5h',used:63,rate:true},weekly:{label:'周',used:55},monthly:{label:'月',used:34}},
+   resets:{rolling:'32分',weekly:'2.1h',monthly:'8天'}},
+  {vendor:'deepseek',key:'…g7H8i9',types:['codex'],fresh:true,
+   balance:{total:'¥9.67',granted:'¥7.12',topped:'¥2.55'}},
+  {vendor:'minimax',key:'…j0K1l2',types:['codex'],fresh:false,
+   err:'MiniMax 需要 admin-key 才能查询余额（普通 API key 返回 403）。请在 quota-sources[].admin-key 填入。'},
+];
+let activeTab='';
+function tone(used){const r=100-used;if(r>=70)return '';if(r>=30)return 'amber';return 'red'}
+const $=id=>document.getElementById(id);
+const el=(tag,cls,html)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(html!=null)n.innerHTML=html;return n};
+
+(function(){
+  const box=$('stats');
+  const ok=ENTRY.filter(e=>!e.err).length,err=ENTRY.length-ok,fresh=ENTRY.filter(e=>e.fresh).length;
+  box.append(
+    el('div','stat','<div class="label">条目</div><div class="value">'+ENTRY.length+'</div>'),
+    el('div','stat','<div class="label">OpenCode</div><div class="value blue">'+ENTRY.filter(e=>e.vendor==='opencode').length+'</div>'),
+    el('div','stat','<div class="label">DeepSeek</div><div class="value">'+ENTRY.filter(e=>e.vendor==='deepseek').length+'</div>'),
+    el('div','stat','<div class="label">MiniMax</div><div class="value red">'+ENTRY.filter(e=>e.vendor==='minimax').length+'</div>'),
+    el('div','stat','<div class="label">可用</div><div class="value green">'+ok+'</div>'),
+    el('div','stat','<div class="label">异常</div><div class="value '+(err?'red':'green')+'">'+err+'</div>'),
+  );
+})();
+(function(){
+  const box=$('tabs');
+  const mk=(id,name,count,active)=>{const b=el('button','tab'+(active?' active':''),name+'<span class="count">'+count+'</span>');b.dataset.tab=id;return b};
+  box.append(mk('','全部',ENTRY.length,true));
+  for(const s of SOURCES)box.append(mk(s.id,s.name,ENTRY.filter(e=>e.vendor===s.id).length,false));
+  box.addEventListener('click',e=>{const b=e.target.closest('.tab');if(!b)return;activeTab=b.dataset.tab;[...box.children].forEach(t=>t.classList.toggle('active',t===b));applyTab();});
+})();
+function applyTab(){
+  [...$('panel').children].forEach(c=>c.classList.toggle('hide',!!activeTab&&c.dataset.vendor!==activeTab));
+  $('emptyWrap').style.display=ENTRY.some(e=>(!activeTab||e.vendor===activeTab))?'none':'block';
+  $('emptyWrap').textContent=activeTab?'该厂商暂无条目':'暂无数据';
+}
+function winHTML(w,r){
+  const tc=tone(w.used),rem=100-w.used;
+  return '<div class="win"><div class="wh"><span>'+w.label+'</span><span><b>'+rem+'%</b></span></div>'+
+    '<div class="bar"><i class="'+tc+'" style="width:'+rem+'%"></i></div>'+
+    '<div class="rst">'+r+(w.rate?' · 限流':'')+'</div></div>';
+}
+function rowHTML(e){
+  let mid='',right='';
+  if(e.err){
+    mid='<span class="rowerr">⚠ '+e.err+'</span>';
+  } else if(e.windows){
+    const k=['rolling','weekly','monthly'];
+    mid='<div class="wins">'+k.map(x=>winHTML(e.windows[x],e.resets[x])).join('')+'</div>';
+  } else if(e.balance){
+    const low=parseFloat(e.balance.total.replace(/[^\d.]/g,''))<3;
+    mid='<div class="bal"><span class="amt '+(low?'red':'')+'">'+e.balance.total+'</span>'+
+        '<span class="bd">赠 '+e.balance.granted+' · 充 '+e.balance.topped+'</span></div>';
+  } else {mid='<span class="rowerr">暂无数据</span>';}
+  const icon=SOURCES.find(s=>s.id===e.vendor);
+  return '<div class="row" data-vendor="'+e.vendor+'">'+
+    '<div class="left"><span class="icon" style="background:'+icon.color+'">'+icon.name.slice(0,1)+'</span>'+
+      '<div><div class="lname">'+icon.name+'</div><div class="lmeta">'+
+        e.types.map(t=>'<span class="badge type">'+t+'</span>').join('')+'<span class="badge key">'+e.key+'</span>'+
+        (e.fresh?'<span class="badge fresh">实时</span>':'<span class="badge stale">缓存</span>')+'</div></div></div>'+
+    '<div class="mid">'+mid+'</div>'+
+    '<span class="expand">'+(e.fresh?'':'')+'</span></div>';
+}
+(function(){
+  const panel=$('panel');
+  ENTRY.slice().reverse().forEach(e=>panel.insertAdjacentHTML('afterbegin',rowHTML(e)));
+  applyTab();
+})();
+$('refresh').addEventListener('click',function(){
+  this.classList.add('loading');this.disabled=true;
+  const at=new Date();
+  setTimeout(()=>{this.classList.remove('loading');this.disabled=false;$('refreshAt').textContent='已刷新 '+at.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});},900);
+});
+$('refreshAt').textContent='上次 '+(new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}));
+</script>
+</body>
+</html>

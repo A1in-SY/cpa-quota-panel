@@ -1,0 +1,27 @@
+# cpa-quota-panel 配置示例（并入 CLIProxyAPI 的 config.yaml）
+plugins:
+  enabled: true
+  dir: "plugins"
+  configs:
+    cpa-quota-panel:
+      enabled: true
+      # 宿主 config.yaml 路径（容器内固定为这个挂载路径；本地可改成你的路径）
+      config-path: "/CLIProxyAPI/config.yaml"
+      cache-ttl-seconds: 300
+      # 白名单厂商模板（默认已内置 opencode/deepseek/minimax 三家，以下为明确写法）
+      # quota-sources:
+      #   - id: opencode
+      #     name: "OpenCode"
+      #     match-base-urls: ["https://opencode.ai/zen/go/v1"]
+      #     quota-url: "https://opencode.ai/zen/go/v1/usage"
+      #     kind: percent-windows
+      #   - id: deepseek
+      #     name: "DeepSeek 官方"
+      #     match-base-urls: ["https://api.deepseek.com", "https://api.deepseek.com/anthropic"]
+      #     quota-url: "https://api.deepseek.com/user/balance"
+      #     kind: balance
+      #   - id: minimax
+      #     name: "MiniMax"
+      #     match-base-urls: ["https://api.minimaxi.com/v1"]
+      #     quota-url: "https://api.minimax.io/v1/dashboard/billing/credit_grants"   # 集成时校准
+      #     kind: grants

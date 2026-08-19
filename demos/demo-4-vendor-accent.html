@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度面板 Demo ④ · 厂商专属色（品牌感）</title>
+<style>
+:root{
+  --app-bg:#eef2f8; --app-bg-gradient:linear-gradient(150deg,#eef6ff 0%,#eef2ff 55%,#ecf8f7 100%);
+  --app-surface:#ffffff; --app-border:rgba(15,23,42,.07);
+  --app-text-primary:#232f3e; --app-text-regular:#5f6c7b; --app-text-muted:#8b95a6;
+  --app-radius-lg:18px; --app-radius-md:12px; --app-radius-full:9999px; --app-gap:20px;
+}
+*{box-sizing:border-box}
+html,body{width:100%;min-height:100%}
+body{margin:0;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  color:var(--app-text-primary);background:var(--app-bg);background-image:var(--app-bg-gradient);background-attachment:fixed;
+  min-height:100vh;padding:24px}
+.main{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:var(--app-gap)}
+
+.head{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--app-radius-lg);padding:18px 22px;
+  box-shadow:0 6px 24px -18px rgba(20,40,90,.18)}
+h1{font-size:19px;margin:0;display:flex;align-items:center;gap:10px}
+h1 .dot{width:12px;height:12px;border-radius:50%;background:linear-gradient(135deg,#3b82f6,#06b6d4)}
+.sub{color:var(--app-text-muted);font-size:12px;margin:2px 0 0}
+.tools{display:flex;align-items:center;gap:12px}
+.btn{height:34px;padding:0 15px;border-radius:10px;border:1px solid var(--app-border);background:#fff;color:var(--app-text-regular);
+  font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.btn:hover{border-color:#93c5fd;color:#2563eb;background:#eff6ff}
+.spin{display:none;width:13px;height:13px;border-radius:50%;border:2px solid rgba(37,99,235,.3);border-top-color:#2563eb;animation:spin .8s linear infinite}
+.btn.loading .spin{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Tabs：厂商色激活时也上色 */
+.tabs{display:flex;flex-wrap:wrap;gap:8px}
+.tab{height:34px;padding:0 15px;border-radius:var(--app-radius-full);border:1px solid var(--app-border);background:#fff;
+  color:var(--app-text-regular);font-size:13px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:all .15s ease}
+.tab .cdot{width:8px;height:8px;border-radius:50%;opacity:.55}
+.tab.active .cdot{opacity:1}
+.tab .count{font-size:11px;opacity:.65}
+.tab[data-tab=""] .cdot{background:#64748b}
+.tab[data-tab="opencode"].active{background:#2563eb;border-color:#2563eb;color:#fff}
+.tab[data-tab="deepseek"].active{background:#0891b2;border-color:#0891b2;color:#fff}
+.tab[data-tab="minimax"].active{background:#dc2626;border-color:#dc2626;color:#fff}
+.tab[data-tab=""] .cdot{background:#94a3b8}
+
+/* 四项汇总 */
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
+.sum{display:flex;align-items:center;gap:12px;background:var(--app-surface);border:1px solid var(--app-border);
+  border-radius:14px;padding:13px 16px;box-shadow:0 4px 16px -14px rgba(20,40,90,.2)}
+.sum .ic{width:36px;height:36px;border-radius:11px;color:#fff;display:grid;place-items:center;font-weight:800;flex:0 0 36px}
+.sum .t{font-size:12px;color:var(--app-text-muted)}
+.sum .v{font-size:18px;font-weight:800;font-variant-numeric:tabular-nums}
+
+/* 卡片：顶部色带 + 大余量 */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:var(--app-gap)}
+.entry{background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--app-radius-lg);overflow:hidden;
+  display:none;flex-direction:column;box-shadow:0 8px 26px -20px rgba(20,40,90,.25)}
+.entry.on{display:flex;animation:fadeIn .2s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+.ribbon{height:6px}
+.entry-body{padding:16px 18px 18px;display:flex;flex-direction:column;gap:14px}
+.entry-top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.ename{display:flex;align-items:center;gap:9px}
+.ename .mark{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#fff;font-weight:800}
+.ename b{font-size:15px}
+.emeta{display:flex;gap:5px;flex-wrap:wrap;margin-top:3px}
+.badge{font-size:10.5px;padding:1px 8px;border-radius:var(--app-radius-full);border:1px solid;font-weight:600;white-space:nowrap}
+.badge.gray{color:#475569;background:#f8fafc;border-color:#e2e8f0}
+.badge.key{color:#475569;background:#f8fafc;border-color:#e2e8f0;font-family:ui-monospace,Menlo,monospace}
+.badge.green{color:#16a34a;background:#f0fdf4;border-color:#bbf7d0}
+.badge.amber{color:#d97706;background:#fffbeb;border-color:#fde68a}
+/* 大余量区 */
+.gauge{display:flex;align-items:flex-end;gap:16px}
+.gauge .ring{position:relative;width:74px;height:74px;flex:0 0 74px}
+.gauge .ring svg{transform:rotate(-90deg)}
+.gauge .ring .num{position:absolute;inset:0;display:grid;place-items:center;font-size:16px;font-weight:800;font-variant-numeric:tabular-nums}
+.gauge .label{font-size:11px;color:var(--app-text-muted)}
+.gauge .time{font-size:12px;color:var(--app-text-regular);margin-top:2px}
+.gauge .list{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
+.gwin{display:flex;flex-direction:column;gap:3px}
+.gwin .wh{display:flex;justify-content:space-between;font-size:11px;color:var(--app-text-muted);gap:6px}
+.gwin .wh b{color:var(--app-text-primary);font-variant-numeric:tabular-nums}
+.bar{height:6px;border-radius:var(--app-radius-full);background:var(--app-bg);overflow:hidden}
+.bar>i{display:block;height:100%;border-radius:var(--app-radius-full)}
+/* 余额用大字 */
+.bigbal{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.bigbal .amt{font-size:34px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;color:#16a34a}
+.bigbal .amt.red{color:#dc2626}
+.bigbal .bd{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--app-text-muted);text-align:right;font-variant-numeric:tabular-nums}
+.bigbal .bd b{color:var(--app-text-primary)}
+/* 错误 */
+.errbox{display:flex;gap:10px;align-items:flex-start;background:#fef2f2;border:1px solid #fecaca;color:#dc2626;
+  border-radius:12px;padding:12px 14px;font-size:12px;line-height:1.5}
+.empty{color:var(--app-text-muted);text-align:center;padding:34px 0}
+</style>
+</head>
+<body>
+<div class="main">
+  <div class="head">
+    <div><h1><span class="dot"></span>额度面板</h1><p class="sub">只读额度查询 · 按厂商色区分 · 余量更直观</p></div>
+    <div class="tools"><span id="refreshAt" style="color:var(--app-text-muted);font-size:12px">刚刚</span>
+      <button class="btn" id="refresh"><span class="spin"></span>刷新</button></div>
+  </div>
+
+  <div class="summary" id="summary"></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="emptyWrap"></div>
+</div>
+
+<script>
+const SOURCES=[
+  {id:'opencode',name:'OpenCode',color:'#2563eb',soft:'#eff6ff'},
+  {id:'deepseek',name:'DeepSeek',color:'#0891b2',soft:'#ecfeff'},
+  {id:'minimax',name:'MiniMax',color:'#dc2626',soft:'#fef2f2'},
+];
+const ENTRY=[
+  {vendor:'opencode',key:'…a1B2c3a',types:['codex','claude'],fresh:true,
+   windows:{rolling:{label:'5小时窗口',used:42},weekly:{label:'每周窗口',used:28},monthly:{label:'每月窗口',used:11}},
+   resets:{rolling:'23:40',weekly:'4.2h 后',monthly:'11天'}},
+  {vendor:'opencode',key:'…d4E5f6',types:['codex'],fresh:true,
+   windows:{rolling:{label:'5小时窗口',used:63,rate:true},weekly:{label:'每周窗口',used:55},monthly:{label:'每月窗口',used:34}},
+   resets:{rolling:'32分钟',weekly:'2.1h 后',monthly:'8天'}},
+  {vendor:'deepseek',key:'…g7H8i9',types:['codex'],fresh:true,
+   balance:{total:'¥9.67',granted:'¥7.12',topped:'¥2.55'}},
+  {vendor:'minimax',key:'…j0K1l2',types:['codex'],fresh:false,
+   err:'MiniMax 需要 admin-key 才能查询余额（普通 API key 返回 403）。请在 quota-sources[].admin-key 填入。'},
+];
+let activeTab='';
+const $=id=>document.getElementById(id);
+const el=(tag,cls,html)=>{const n=document.createElement(tag);if(cls)n.className=cls;if(html!=null)n.innerHTML=html;return n};
+const nameOf=id=>SOURCES.find(s=>s.id===id).name;
+const colOf=id=>SOURCES.find(s=>s.id===id).color;
+function tone(used){const r=100-used;if(r>=70)return 'green';if(r>=30)return 'amber';return 'red'}
+
+/* 汇总（含厂商统计） */
+(function(){
+  const box=$('summary');
+  box.append(
+    el('div','sum','<span class="ic" style="background:#64748b">Σ</span><div><div class="t">条目</div><div class="v">'+ENTRY.length+'</div></div>'),
+  );
+  for(const s of SOURCES){
+    const n=ENTRY.filter(e=>e.vendor===s.id).length;
+    box.append(el('div','sum','<span class="ic" style="background:'+s.color+'">'+s.name.slice(0,1)+'</span><div><div class="t">'+s.name+'</div><div class="v">'+n+'</div></div>'));
+  }
+  const ok=ENTRY.filter(e=>!e.err).length;
+  box.append(el('div','sum','<span class="ic" style="background:#16a34a">✓</span><div><div class="t">可用</div><div class="v">'+ok+'</div></div>'));
+})();
+
+/* Tabs */
+(function(){
+  const box=$('tabs');
+  const mk=(id,name,count,active,dot)=>{
+    const b=el('button','tab'+(active?' active':''),(dot?'<span class="cdot" style="background:'+dot+'"></span>':'')+name+'<span class="count">'+count+'</span>');
+    b.dataset.tab=id;return b;
+  };
+  box.append(mk('','全部',ENTRY.length,true));
+  for(const s of SOURCES)box.append(mk(s.id,s.name,ENTRY.filter(e=>e.vendor===s.id).length,false,s.color));
+  box.addEventListener('click',e=>{
+    const b=e.target.closest('.tab');if(!b)return;
+    activeTab=b.dataset.tab;[...box.children].forEach(t=>t.classList.toggle('active',t===b));applyTab();
+  });
+})();
+function applyTab(){
+  [...$('grid').children].forEach(c=>c.classList.toggle('on',!activeTab||c.dataset.vendor===activeTab));
+  const show=ENTRY.some(e=>(!activeTab||e.vendor===activeTab));
+  $('emptyWrap').textContent=show?'':(activeTab?'该厂商暂无条目':'暂无数据');
+}
+
+function ringSVG(rem,color,toneCls){
+  const c=2*Math.PI*32,off=c*(1-rem/100);
+  const stroke=(toneCls==='green'?'#22c55e':toneCls==='amber'?'#f59e0b':'#ef4444');
+  return '<div class="ring"><svg width="74" height="74" viewBox="0 0 74 74">'+
+    '<circle cx="37" cy="37" r="32" fill="none" stroke="#eef2f6" stroke-width="7"/>'+
+    '<circle cx="37" cy="37" r="32" fill="none" stroke="'+stroke+'" stroke-width="7" stroke-linecap="round" '+
+    'stroke-dasharray="'+c+'" stroke-dashoffset="'+off+'"/>'+
+    '</svg><span class="num" style="color:'+stroke+'">'+rem+'%</span></div>';
+}
+function windowsBody(e){
+  const rems={rolling:100-e.windows.rolling.used,weekly:100-e.windows.weekly.used,monthly:100-e.windows.monthly.used};
+  const k=['rolling','weekly','monthly'];
+  const t=tone(e.windows.rolling.used===Math.max(...k.map(x=>e.windows[x].used))?e.windows.rolling.used:e.windows.rolling.used);
+  const mainTone=tone(Math.max(...k.map(x=>e.windows[x].used)));
+  return '<div class="gauge">'+ringSVG(Math.round(rems.rolling),colOf(e.vendor),mainTone)+
+    '<div class="list">'+k.map(x=>{
+      const u=e.windows[x].used,rem=100-u,tc=tone(u);
+      const col=tc==='green'?'#22c55e':tc==='amber'?'#f59e0b':'#ef4444';
+      return '<div class="gwin"><div class="wh"><span>'+e.windows[x].label+'</span><span>剩余 <b>'+rem+'%</b></span></div>'+
+        '<div class="bar"><i style="width:'+rem+'%;background:'+col+'"></i></div>'+
+        '<div class="wh"><span style="font-size:10px">重置 '+e.resets[x]+(e.windows[x].rate?' · 限流':'')+'</span></div></div>';
+    }).join('')+'</div></div>';
+}
+(function(){
+  const grid=$('grid');
+  for(const e of ENTRY){
+    const icon=SOURCES.find(s=>s.id===e.vendor);
+    const card=el('div','entry','<div class="ribbon" style="background:'+icon.color+'"></div>'+
+      '<div class="entry-body"><div class="entry-top">'+
+      '<div class="ename"><span class="mark" style="background:'+icon.color+'">'+icon.name.slice(0,1)+'</span>'+
+      '<div><b>'+icon.name+'</b><div class="emeta">'+
+        e.types.map(t=>'<span class="badge gray">'+t+'</span>').join('')+'<span class="badge key">'+e.key+'</span>'+
+        (e.fresh?'<span class="badge green">实时</span>':'<span class="badge amber">缓存</span>')+
+      '</div></div></div>'+((e.err)?'<span class="badge '+((e.err)?'amber':'')+'">异常</span>':'')+'</div></div>');
+    card.dataset.vendor=e.vendor;
+    const body=card.querySelector('.entry-body');
+    if(e.err){
+      body.insertAdjacentHTML('beforeend','<div class="errbox"><span>⚠</span><span>'+e.err+'</span></div>');
+    } else if(e.windows){
+      body.insertAdjacentHTML('beforeend',windowsBody(e));
+    } else if(e.balance){
+      const low=parseFloat(e.balance.total.replace(/[^\d.]/g,''))<3;
+      body.insertAdjacentHTML('beforeend','<div class="bigbal"><div><div class="amt '+(low?'red':'')+'">'+e.balance.total+'</div><div class="bd" style="text-align:left;margin-top:2px">'+icon.name+' 账户</div></div>'+
+        '<div class="bd"><span>赠送 <b>'+e.balance.granted+'</b></span><span>充值 <b>'+e.balance.topped+'</b></span></div></div>');
+    } else {
+      body.insertAdjacentHTML('beforeend','<div class="errbox"><span>暂无额度数据</span></div>');
+    }
+    grid.append(card);
+  }
+  applyTab();
+})();
+
+$('refresh').addEventListener('click',function(){
+  this.classList.add('loading');this.disabled=true;const at=new Date();
+  setTimeout(()=>{this.classList.remove('loading');this.disabled=false;$('refreshAt').textContent='已刷新 '+at.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit',second:'2-digit'});},900);
+});
+$('refreshAt').textContent='上次 '+(new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'}));
+</script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度面板 · UI Demo 预览</title>
+<style>
+:root{
+  --app-bg:#eff2f7; --app-bg-gradient:linear-gradient(120deg,#f0f7ff 0%,#e7f2ff 50%,#edf7ff 100%);
+  --app-surface:rgba(255,255,255,.9); --app-border:rgba(15,23,42,.08); --app-border-strong:rgba(15,23,42,.12);
+  --app-text-primary:#2c3e50; --app-text-regular:#5f6c7b; --app-text-muted:#8b95a6;
+  --app-radius-lg:20px; --app-radius-md:12px; --app-gap:20px; --app-blur:20px;
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:var(--app-bg);background-image:var(--app-bg-gradient);background-attachment:fixed;color:var(--app-text-primary);
+  min-height:100vh;padding:32px 20px;}
+.wrap{max-width:980px;margin:0 auto}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:.2px}
+p.sub{color:var(--app-text-regular);margin:0 0 24px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--app-gap)}
+.card{background:var(--app-surface);border:1px solid var(--app-border);border-radius:var(--app-radius-lg);
+  padding:20px;backdrop-filter:blur(var(--app-blur));-webkit-backdrop-filter:blur(var(--app-blur));
+  text-decoration:none;color:inherit;display:flex;flex-direction:column;gap:10px;
+  box-shadow:0 4px 18px rgba(20,40,90,.06);transition:transform .15s ease,box-shadow .15s ease;}
+.card:hover{transform:translateY(-2px);box-shadow:0 8px 26px rgba(20,40,90,.12)}
+.card .badges{display:flex;gap:6px;flex-wrap:wrap}
+.badge{font-size:11px;padding:2px 9px;border-radius:999px;border:1px solid;font-weight:600}
+.badge.blue{color:#1d4ed8;background:#eff6ff;border-color:#bfdbfe}
+.badge.green{color:#15803d;background:#f0fdf4;border-color:#bbf7d0}
+.badge.amber{color:#b45309;background:#fffbeb;border-color:#fde68a}
+.badge.violet{color:#6d28d9;background:#f5f3ff;border-color:#ddd6fe}
+.card h3{margin:0;font-size:16px}
+.card p{margin:0;color:var(--app-text-regular);font-size:13px}
+.card .go{align-self:flex-start;margin-top:4px;font-size:13px;font-weight:600;color:#3b82f6}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>额度面板 · UI Demo</h1>
+  <p class="sub">均按现有 CPAMP（CPA-Manager-Plus）设计语言绘制：玻璃拟态、data-* 彩色语义、大圆角、主蓝 #3b82f6。示例数据为当前服务器真实形状（OpenCode ×2 / DeepSeek ¥9.67 / MiniMax 需 admin-key）。<br>①② 已支持<b>跟随 CPAMP 深浅色</b>：页面右上角有「浅色/深色」切换可本地模拟；部署进 CPAMP 后会直接读取其注入的主题变量，实时跟随。</p>
+  <div class="cards">
+    <a class="card" href="demo-1-glass-light.html">
+      <div class="badges"><span class="badge blue">默认推荐</span><span class="badge violet">跟随主题</span></div>
+      <h3>① 玻璃拟态 · 跟随主题（浅色起始）</h3>
+      <p>最贴近 CPAMP 现网：渐变青蓝底 + 毛玻璃卡片 + 主蓝按钮，进度条按剩余% 变绿/黄/红；右上角可模拟深浅色切换，嵌入 CPAMP 自动跟随。</p>
+      <span class="go">打开 →</span>
+    </a>
+    <a class="card" href="demo-2-glass-dark.html">
+      <div class="badges"><span class="badge blue">深色</span><span class="badge violet">跟随主题</span></div>
+      <h3>② 玻璃拟态 · 跟随主题（深色起始）</h3>
+      <p>同 ① 完整版，打开即深色演示，方便直接看夜间效果与彩虹语义色。</p>
+      <span class="go">打开 →</span>
+    </a>
+    <a class="card" href="demo-3-compact.html">
+      <div class="badges"><span class="badge green">紧凑</span></div>
+      <h3>③ 紧凑 · 数据密度</h3>
+      <p>大量 key 时的信息密度优先布局：顶部汇总 stat 卡 + 逐条目行式展开，一眼看全部。</p>
+      <span class="go">打开 →</span>
+    </a>
+    <a class="card" href="demo-4-vendor-accent.html">
+      <div class="badges"><span class="badge amber">彩色分类</span></div>
+      <h3>④ 厂商专属色</h3>
+      <p>每个厂商一种主题色（OpenCode 蓝 / DeepSeek 青 / MiniMax 红），品牌感更强，余量即大纲字。</p>
+      <span class="go">打开 →</span>
+    </a>
+  </div>
+</div>
+</body>
+</html>
