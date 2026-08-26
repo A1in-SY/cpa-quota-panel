@@ -74,6 +74,73 @@ func TestParseCodingPlanEmpty(t *testing.T) {
 	}
 }
 
+func TestParseZhipuPlan(t *testing.T) {
+	// Shape per the cc-switch #1588 sample: two TOKENS_LIMIT windows (5h + weekly,
+	// ordered by nextResetTime) and one TIME_LIMIT (monthly MCP count, with %).
+	body := `{"code":200,"msg":"操作成功","success":true,"data":{"level":"pro","limits":[
+		{"type":"TOKENS_LIMIT","percentage":44,"nextResetTime":1784400000000},
+		{"type":"TOKENS_LIMIT","percentage":53,"nextResetTime":1785000000000},
+		{"type":"TIME_LIMIT","percentage":7,"usage":1000,"currentValue":72,"remaining":928}
+	]}}`
+	out := &quotaData{Kind: "zhipu-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if out.Windows["rolling"].Percent != 44 {
+		t.Fatalf("rolling = %+v", out.Windows["rolling"])
+	}
+	if out.Windows["weekly"].Percent != 53 {
+		t.Fatalf("weekly = %+v", out.Windows["weekly"])
+	}
+	if out.Windows["monthly"].Percent != 7 {
+		t.Fatalf("monthly = %+v", out.Windows["monthly"])
+	}
+	if out.Windows["weekly"].ResetsAt == "" {
+		t.Fatalf("weekly resetsAt missing: %+v", out.Windows["weekly"])
+	}
+}
+
+func TestParseZhipuPlanCreditLimitAlias(t *testing.T) {
+	// Newer plans renamed TOKENS_LIMIT to CREDIT_LIMIT.
+	body := `{"code":200,"success":true,"data":{"level":"lite","limits":[
+		{"type":"CREDIT_LIMIT","percentage":12,"nextResetTime":1785000000000}
+	]}}`
+	out := &quotaData{Kind: "zhipu-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if out.Windows["rolling"].Percent != 12 {
+		t.Fatalf("rolling = %+v", out.Windows["rolling"])
+	}
+	if _, ok := out.Windows["weekly"]; ok {
+		t.Fatalf("weekly must be absent for a single window: %+v", out.Windows)
+	}
+	if _, ok := out.Windows["monthly"]; ok {
+		t.Fatalf("monthly must be absent without percentage: %+v", out.Windows)
+	}
+}
+
+func TestParseZhipuPlanAuthErrorViaBodyCode(t *testing.T) {
+	// The endpoint returns HTTP 200 even on bad keys; the body code carries the error.
+	body := `{"code":401,"msg":"令牌已过期或验证不正确","success":false}`
+	out := &quotaData{Kind: "zhipu-plan"}
+	err := parseQuotaPayload(out, []byte(body))
+	if err == nil {
+		t.Fatal("body code 401 must error")
+	}
+	if !strings.Contains(err.Error(), "zhipu-plan error 401") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+func TestParseZhipuPlanNoTokenLimits(t *testing.T) {
+	body := `{"code":200,"msg":"操作成功","success":true,"data":{"limits":[{"type":"TIME_LIMIT","usage":1000,"currentValue":72}]}}`
+	out := &quotaData{Kind: "zhipu-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err == nil {
+		t.Fatal("missing token limits must error")
+	}
+}
+
 func TestFmtDuration(t *testing.T) {
 	cases := []struct {
 		sec  int64

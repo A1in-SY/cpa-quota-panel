@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
@@ -215,10 +217,97 @@ func parseQuotaPayload(out *quotaData, body []byte) error {
 			}
 			out.Grants = append(out.Grants, grantRow{Remaining: fmtNum(g.Remaining), ExpiresAt: exp})
 		}
+	case "zhipu-plan":
+		if err := parseZhipuPlan(out, body); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported kind %q", out.Kind)
 	}
 	return nil
+}
+
+// zhipuLimitRow is one quota window in the GLM Coding Plan usage limits array
+// (open.bigmodel.cn/api/biz/usage). TOKENS_LIMIT is the historical type name of
+// the percentage windows; CREDIT_LIMIT is the renamed variant in newer plans.
+// TIME_LIMIT counts monthly MCP calls and carries a percentage as well.
+type zhipuLimitRow struct {
+	Type          string  `json:"type"`
+	Percentage    float64 `json:"percentage"`
+	Usage         int64   `json:"usage"`
+	CurrentValue  int64   `json:"currentValue"`
+	Remaining     int64   `json:"remaining"`
+	NextResetTime int64   `json:"nextResetTime"` // epoch milliseconds
+}
+
+// parseZhipuPlan decodes the GLM Coding Plan usage envelope. Note the endpoint
+// reports auth failures with HTTP 200 + a non-zero body code, so the code must
+// be checked here rather than via the HTTP status alone.
+func parseZhipuPlan(out *quotaData, body []byte) error {
+	var payload struct {
+		Code    int    `json:"code"`
+		Msg     string `json:"msg"`
+		Success bool   `json:"success"`
+		Data    struct {
+			Level  string          `json:"level"`
+			Limits []zhipuLimitRow `json:"limits"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return fmt.Errorf("invalid zhipu-plan payload: %w", err)
+	}
+	if payload.Code != 0 && payload.Code != 200 {
+		msg := strings.TrimSpace(payload.Msg)
+		if msg == "" {
+			switch payload.Code {
+			case 401:
+				msg = "invalid key (认证失败)"
+			default:
+				msg = "unknown error"
+			}
+		}
+		return fmt.Errorf("zhipu-plan error %d: %s", payload.Code, msg)
+	}
+
+	out.Windows = map[string]percentWindow{}
+	tokens := make([]zhipuLimitRow, 0, len(payload.Data.Limits))
+	for _, l := range payload.Data.Limits {
+		switch l.Type {
+		case "TOKENS_LIMIT", "CREDIT_LIMIT":
+			tokens = append(tokens, l)
+		case "TIME_LIMIT":
+			if l.Percentage > 0 {
+				out.Windows["monthly"] = percentWindow{
+					Percent:  l.Percentage,
+					ResetsAt: zhipuResetRFC3339(l.NextResetTime),
+				}
+			}
+		}
+	}
+	sort.Slice(tokens, func(i, j int) bool { return tokens[i].NextResetTime < tokens[j].NextResetTime })
+	if len(tokens) == 0 {
+		return fmt.Errorf("zhipu-plan payload has no TOKENS_LIMIT/CREDIT_LIMIT entries")
+	}
+	out.Windows["rolling"] = percentWindow{
+		Percent:  tokens[0].Percentage,
+		ResetsAt: zhipuResetRFC3339(tokens[0].NextResetTime),
+	}
+	if len(tokens) > 1 {
+		out.Windows["weekly"] = percentWindow{
+			Percent:  tokens[1].Percentage,
+			ResetsAt: zhipuResetRFC3339(tokens[1].NextResetTime),
+		}
+	}
+	return nil
+}
+
+// zhipuResetRFC3339 converts the endpoint's epoch-millisecond reset stamps to
+// RFC3339 so the dashboard countdown JS parses them natively.
+func zhipuResetRFC3339(millis int64) string {
+	if millis <= 0 {
+		return ""
+	}
+	return time.UnixMilli(millis).UTC().Format(time.RFC3339)
 }
 
 func fmtNum(v any) string {

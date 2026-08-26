@@ -8,7 +8,7 @@ plugins:
       # 宿主 config.yaml 路径（容器内固定为这个挂载路径；本地可改成你的路径）
       config-path: "/CLIProxyAPI/config.yaml"
       cache-ttl-seconds: 300
-      # 白名单厂商模板（默认已内置 opencode/deepseek/minimax 三家，以下为明确写法）
+      # 白名单厂商模板（默认已内置 opencode/deepseek/minimax/智谱 四家，以下为明确写法）
       # quota-sources:
       #   - id: opencode
       #     name: "OpenCode"
@@ -16,7 +16,7 @@ plugins:
       #     quota-url: "https://opencode.ai/zen/go/v1/usage"
       #     kind: percent-windows
       #   - id: deepseek
-      #     name: "DeepSeek 官方"
+      #     name: "Deepseek API"
       #     match-base-urls: ["https://api.deepseek.com", "https://api.deepseek.com/anthropic"]
       #     quota-url: "https://api.deepseek.com/user/balance"
       #     kind: balance
@@ -25,3 +25,11 @@ plugins:
       #     match-base-urls: ["https://www.minimaxi.com", "https://api.minimaxi.com/v1"]
       #     quota-url: "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains"
       #     kind: coding-plan   # 普通 sk-cp- key 即可；按 model 显示当前周期/本周剩余
+      #   - id: zhipu
+      #     name: "智谱CodingPlan"
+      #     match-base-urls:
+      #       - "https://open.bigmodel.cn/api/anthropic"
+      #       - "https://open.bigmodel.cn/api/coding/paas/v4"
+      #       - "https://open.bigmodel.cn/api/v1"
+      #     quota-url: "https://open.bigmodel.cn/api/biz/usage"
+      #     kind: zhipu-plan   # 普通 API key 即可；显示 5 小时/每周/MCP 每月额度

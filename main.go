@@ -168,7 +168,7 @@ func pluginRegistration() registration {
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "config-path", Type: pluginapi.ConfigFieldTypeString, Description: "宿主 config.yaml 的路径（容器内默认 /CLIProxyAPI/config.yaml）。插件从这里读取各 AI 提供商的 api-key 条目。"},
 				{Name: "cache-ttl-seconds", Type: pluginapi.ConfigFieldTypeInteger, Description: "额度接口结果的缓存秒数（默认 300）。"},
-				{Name: "quota-sources", Type: pluginapi.ConfigFieldTypeArray, Description: "白名单厂商模板：JSON 数组，每项 {id, name, match-base-urls[], quota-url, auth, kind}。kind: percent-windows | balance | grants | coding-plan。不填则默认 opencode/deepseek/minimax 三家。"},
+				{Name: "quota-sources", Type: pluginapi.ConfigFieldTypeArray, Description: "白名单厂商模板：JSON 数组，每项 {id, name, match-base-urls[], quota-url, auth, kind}。kind: percent-windows | balance | grants | coding-plan | zhipu-plan。不填则默认 opencode/deepseek/minimax/智谱 四家。"},
 			},
 		},
 		Capabilities: registrationCapability{

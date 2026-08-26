@@ -126,9 +126,9 @@ func normalizeAndValidate(cfg *pluginConfig) error {
 			return fmt.Errorf("quota-sources[%d].id %q: quota-url is required", i, src.ID)
 		}
 		switch src.Kind {
-		case "percent-windows", "balance", "grants", "coding-plan":
+		case "percent-windows", "balance", "grants", "coding-plan", "zhipu-plan":
 		default:
-			return fmt.Errorf("quota-sources[%d].id %q: kind must be percent-windows|balance|grants|coding-plan", i, src.ID)
+			return fmt.Errorf("quota-sources[%d].id %q: kind must be percent-windows|balance|grants|coding-plan|zhipu-plan", i, src.ID)
 		}
 	}
 	return nil
@@ -147,7 +147,7 @@ func defaultSources() []QuotaSource {
 		},
 		{
 			ID:            "deepseek",
-			Name:          "DeepSeek 官方",
+			Name:          "Deepseek API",
 			MatchBaseURLs: []string{"https://api.deepseek.com", "https://api.deepseek.com/anthropic"},
 			QuotaURL:      "https://api.deepseek.com/user/balance",
 			Auth:          "bearer",
@@ -162,6 +162,20 @@ func defaultSources() []QuotaSource {
 			QuotaURL:      "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains",
 			Auth:          "bearer",
 			Kind:          "coding-plan",
+		},
+		{
+			ID:   "zhipu",
+			Name: "智谱CodingPlan",
+			// 智谱开放平台（bigmodel）国内版：anthropic 变体、coding 专用端点与 v1
+			// 兼容端点都按 GLM Coding Plan 用量接口查询（/api/biz/usage，普通 API key 即可）。
+			MatchBaseURLs: []string{
+				"https://open.bigmodel.cn/api/anthropic",
+				"https://open.bigmodel.cn/api/coding/paas/v4",
+				"https://open.bigmodel.cn/api/v1",
+			},
+			QuotaURL: "https://open.bigmodel.cn/api/biz/usage",
+			Auth:     "bearer",
+			Kind:     "zhipu-plan",
 		},
 	}
 }

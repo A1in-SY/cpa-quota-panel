@@ -16,7 +16,7 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 	if cfg.CacheTTL != 300 {
 		t.Fatalf("default cache-ttl = %d", cfg.CacheTTL)
 	}
-	if len(cfg.Sources) != 3 {
+	if len(cfg.Sources) != 4 {
 		t.Fatalf("default sources = %d", len(cfg.Sources))
 	}
 	ids := map[string]bool{}
@@ -26,13 +26,34 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 			t.Fatalf("default source incomplete: %+v", s)
 		}
 	}
-	if !ids["opencode"] || !ids["deepseek"] || !ids["minimax"] {
+	if !ids["opencode"] || !ids["deepseek"] || !ids["minimax"] || !ids["zhipu"] {
 		t.Fatalf("default sources missing vendor: %v", ids)
 	}
 	for _, s := range cfg.Sources {
 		if s.ID == "minimax" {
 			if s.Kind != "coding-plan" || !strings.Contains(s.QuotaURL, "coding_plan/remains") {
 				t.Fatalf("default minimax source = kind %q url %q, want coding-plan remains endpoint", s.Kind, s.QuotaURL)
+			}
+		}
+		if s.ID == "zhipu" {
+			if s.Kind != "zhipu-plan" || !strings.Contains(s.QuotaURL, "/api/biz/usage") {
+				t.Fatalf("default zhipu source = kind %q url %q, want zhipu-plan usage endpoint", s.Kind, s.QuotaURL)
+			}
+			if len(s.MatchBaseURLs) != 3 {
+				t.Fatalf("default zhipu match-base-urls = %v, want 3 patterns", s.MatchBaseURLs)
+			}
+			want := map[string]bool{
+				"https://open.bigmodel.cn/api/anthropic":       true,
+				"https://open.bigmodel.cn/api/coding/paas/v4": true,
+				"https://open.bigmodel.cn/api/v1":             true,
+			}
+			for _, u := range s.MatchBaseURLs {
+				if !want[u] {
+					t.Fatalf("unexpected zhipu match-base-url %q", u)
+				}
+			}
+			if s.Name != "智谱CodingPlan" {
+				t.Fatalf("zhipu name = %q", s.Name)
 			}
 		}
 	}

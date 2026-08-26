@@ -593,10 +593,10 @@ func renderEntry(b *strings.Builder, e pageEntry) {
 	icBg := vendorColor(e.VendorID)
 	iconHTML := icon
 	if icon == "" {
-		// fallback letter tile for unknown vendors
+		// fallback letter tile for unknown vendors (rune-safe for non-ASCII names)
 		letter := "?"
-		if e.VendorName != "" {
-			letter = strings.ToUpper(e.VendorName[:1])
+		if runes := []rune(e.VendorName); len(runes) > 0 {
+			letter = strings.ToUpper(string(runes[:1]))
 		}
 		iconHTML = "<span style=\"color:#fff;font-weight:800;font-size:16px\">" + html.EscapeString(letter) + "</span>"
 	}
@@ -646,7 +646,11 @@ func renderEntry(b *strings.Builder, e pageEntry) {
 		switch {
 		case e.Windows != nil:
 			for _, key := range []string{"rolling", "weekly", "monthly"} {
-				renderWindow(b, key, e.Windows[key])
+				w, ok := e.Windows[key]
+				if !ok {
+					continue // vendor did not report this window
+				}
+				renderWindow(b, key, w)
 			}
 		case e.Balance != nil:
 			renderBalance(b, e.Balance)
