@@ -12,7 +12,7 @@ CLIProxyAPI 插件：**按厂商维度的只读额度面板**。
 - 服务端分页：每页默认 20 条（`page / page-size / vendor` 参数），厂商 tab 计数始终显示全量。
 - 合并规则：**apikey 完全相同**的条目（跨多个配置段亦然）合并为一条，并展示其关联的 AI 提供商类型标签（如 `codex, claude`）。
 - 厂商识别：每个厂商是"一个或多个 base-url 模式"（如 Deepseek API = `api.deepseek.com` 及 `/anthropic` 变体），命中任一即归入该厂商。
-- 额度展示：`percent-windows`（opencode 三窗口进度）、`balance`（deepseek 余额）、`coding-plan`（minimax coding plan 各 model 的当前周期/本周剩余）、`zhipu-plan`（智谱 GLM Coding Plan 的 5 小时/每周/MCP 每月额度，走 `open.bigmodel.cn/api/biz/usage`，普通 API key 即可）。
+- 额度展示：`percent-windows`（opencode 三窗口进度）、`balance`（deepseek 余额）、`coding-plan`（minimax coding plan 各 model 的当前周期/本周剩余）、`zhipu-plan`（智谱 GLM Coding Plan 的 5 小时/每周/MCP 每月额度，走 `open.bigmodel.cn/api/monitor/usage/quota/limit`，普通 API key 即可）。
 
 ## 目录结构
 

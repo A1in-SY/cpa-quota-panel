@@ -75,11 +75,11 @@ func TestParseCodingPlanEmpty(t *testing.T) {
 }
 
 func TestParseZhipuPlan(t *testing.T) {
-	// Shape per the cc-switch #1588 sample: two TOKENS_LIMIT windows (5h + weekly,
-	// ordered by nextResetTime) and one TIME_LIMIT (monthly MCP count, with %).
-	body := `{"code":200,"msg":"操作成功","success":true,"data":{"level":"pro","limits":[
-		{"type":"TOKENS_LIMIT","percentage":44,"nextResetTime":1784400000000},
-		{"type":"TOKENS_LIMIT","percentage":53,"nextResetTime":1785000000000},
+	// Shape per a live response from open.bigmodel.cn/api/monitor/usage/quota/limit:
+	// CREDIT_LIMIT windows carry unit (3 = 5-hour, 6 = weekly); percentage is used %.
+	body := `{"code":200,"msg":"操作成功","success":true,"data":{"level":"lite","limits":[
+		{"type":"CREDIT_LIMIT","unit":6,"number":1,"usage":2000,"currentValue":242,"remaining":1757,"percentage":12,"nextResetTime":1785000000000},
+		{"type":"CREDIT_LIMIT","unit":3,"number":5,"usage":2000,"currentValue":242,"remaining":1757,"percentage":44,"nextResetTime":1784400000000},
 		{"type":"TIME_LIMIT","percentage":7,"usage":1000,"currentValue":72,"remaining":928}
 	]}}`
 	out := &quotaData{Kind: "zhipu-plan"}
@@ -89,7 +89,7 @@ func TestParseZhipuPlan(t *testing.T) {
 	if out.Windows["rolling"].Percent != 44 {
 		t.Fatalf("rolling = %+v", out.Windows["rolling"])
 	}
-	if out.Windows["weekly"].Percent != 53 {
+	if out.Windows["weekly"].Percent != 12 {
 		t.Fatalf("weekly = %+v", out.Windows["weekly"])
 	}
 	if out.Windows["monthly"].Percent != 7 {
@@ -97,6 +97,21 @@ func TestParseZhipuPlan(t *testing.T) {
 	}
 	if out.Windows["weekly"].ResetsAt == "" {
 		t.Fatalf("weekly resetsAt missing: %+v", out.Windows["weekly"])
+	}
+}
+
+func TestParseZhipuPlanUnitFallbackByResetTime(t *testing.T) {
+	// Without the unit field the soonest reset is the 5-hour window.
+	body := `{"code":200,"success":true,"data":{"level":"pro","limits":[
+		{"type":"TOKENS_LIMIT","percentage":53,"nextResetTime":1785000000000},
+		{"type":"TOKENS_LIMIT","percentage":44,"nextResetTime":1784400000000}
+	]}}`
+	out := &quotaData{Kind: "zhipu-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if out.Windows["rolling"].Percent != 44 || out.Windows["weekly"].Percent != 53 {
+		t.Fatalf("windows = %+v", out.Windows)
 	}
 }
 

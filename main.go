@@ -162,7 +162,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             pluginName,
-			Version:          "1.0.0",
+			Version:          "1.0.1",
 			Author:           "cpa-quota-panel",
 			GitHubRepository: "https://github.com/router-for-me/CLIProxyAPI",
 			ConfigFields: []pluginapi.ConfigField{

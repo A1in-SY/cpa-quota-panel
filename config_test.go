@@ -36,8 +36,8 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 			}
 		}
 		if s.ID == "zhipu" {
-			if s.Kind != "zhipu-plan" || !strings.Contains(s.QuotaURL, "/api/biz/usage") {
-				t.Fatalf("default zhipu source = kind %q url %q, want zhipu-plan usage endpoint", s.Kind, s.QuotaURL)
+			if s.Kind != "zhipu-plan" || !strings.Contains(s.QuotaURL, "/api/monitor/usage/quota/limit") {
+				t.Fatalf("default zhipu source = kind %q url %q, want zhipu-plan monitor usage endpoint", s.Kind, s.QuotaURL)
 			}
 			if len(s.MatchBaseURLs) != 3 {
 				t.Fatalf("default zhipu match-base-urls = %v, want 3 patterns", s.MatchBaseURLs)

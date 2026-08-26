@@ -228,11 +228,13 @@ func parseQuotaPayload(out *quotaData, body []byte) error {
 }
 
 // zhipuLimitRow is one quota window in the GLM Coding Plan usage limits array
-// (open.bigmodel.cn/api/biz/usage). TOKENS_LIMIT is the historical type name of
-// the percentage windows; CREDIT_LIMIT is the renamed variant in newer plans.
-// TIME_LIMIT counts monthly MCP calls and carries a percentage as well.
+// (open.bigmodel.cn/api/monitor/usage/quota/limit). TOKENS_LIMIT is the
+// historical type name of the percentage windows; CREDIT_LIMIT is the current
+// variant. TIME_LIMIT counts monthly MCP calls and carries a percentage too.
 type zhipuLimitRow struct {
 	Type          string  `json:"type"`
+	Unit          int     `json:"unit"` // window length code: 3 = 5-hour, 6 = weekly
+	Number        int     `json:"number"`
 	Percentage    float64 `json:"percentage"`
 	Usage         int64   `json:"usage"`
 	CurrentValue  int64   `json:"currentValue"`
@@ -284,18 +286,44 @@ func parseZhipuPlan(out *quotaData, body []byte) error {
 			}
 		}
 	}
-	sort.Slice(tokens, func(i, j int) bool { return tokens[i].NextResetTime < tokens[j].NextResetTime })
 	if len(tokens) == 0 {
 		return fmt.Errorf("zhipu-plan payload has no TOKENS_LIMIT/CREDIT_LIMIT entries")
 	}
-	out.Windows["rolling"] = percentWindow{
-		Percent:  tokens[0].Percentage,
-		ResetsAt: zhipuResetRFC3339(tokens[0].NextResetTime),
+	// The window's unit field identifies it definitively: 3 = 5-hour rolling,
+	// 6 = weekly (confirmed against live responses). Anything unmapped falls
+	// back to reset-time order: the soonest reset is the 5-hour window, the
+	// next one is the weekly window.
+	leftovers := make([]zhipuLimitRow, 0, len(tokens))
+	for _, l := range tokens {
+		switch l.Unit {
+		case 3:
+			out.Windows["rolling"] = percentWindow{
+				Percent:  l.Percentage,
+				ResetsAt: zhipuResetRFC3339(l.NextResetTime),
+			}
+		case 6:
+			out.Windows["weekly"] = percentWindow{
+				Percent:  l.Percentage,
+				ResetsAt: zhipuResetRFC3339(l.NextResetTime),
+			}
+		default:
+			leftovers = append(leftovers, l)
+		}
 	}
-	if len(tokens) > 1 {
-		out.Windows["weekly"] = percentWindow{
-			Percent:  tokens[1].Percentage,
-			ResetsAt: zhipuResetRFC3339(tokens[1].NextResetTime),
+	sort.Slice(leftovers, func(i, j int) bool { return leftovers[i].NextResetTime < leftovers[j].NextResetTime })
+	for _, l := range leftovers {
+		if _, ok := out.Windows["rolling"]; !ok {
+			out.Windows["rolling"] = percentWindow{
+				Percent:  l.Percentage,
+				ResetsAt: zhipuResetRFC3339(l.NextResetTime),
+			}
+			continue
+		}
+		if _, ok := out.Windows["weekly"]; !ok {
+			out.Windows["weekly"] = percentWindow{
+				Percent:  l.Percentage,
+				ResetsAt: zhipuResetRFC3339(l.NextResetTime),
+			}
 		}
 	}
 	return nil

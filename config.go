@@ -173,7 +173,7 @@ func defaultSources() []QuotaSource {
 				"https://open.bigmodel.cn/api/coding/paas/v4",
 				"https://open.bigmodel.cn/api/v1",
 			},
-			QuotaURL: "https://open.bigmodel.cn/api/biz/usage",
+			QuotaURL: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
 			Auth:     "bearer",
 			Kind:     "zhipu-plan",
 		},

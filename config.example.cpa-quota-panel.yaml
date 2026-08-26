@@ -31,5 +31,5 @@ plugins:
       #       - "https://open.bigmodel.cn/api/anthropic"
       #       - "https://open.bigmodel.cn/api/coding/paas/v4"
       #       - "https://open.bigmodel.cn/api/v1"
-      #     quota-url: "https://open.bigmodel.cn/api/biz/usage"
+      #     quota-url: "https://open.bigmodel.cn/api/monitor/usage/quota/limit"
       #     kind: zhipu-plan   # 普通 API key 即可；显示 5 小时/每周/MCP 每月额度
