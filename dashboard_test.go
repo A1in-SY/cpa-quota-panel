@@ -1,9 +1,14 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"testing"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
 func testEntry(vendor, key string) *scannedEntry {
@@ -147,6 +152,81 @@ func TestBuildPageDataMissingFlags(t *testing.T) {
 	pageEmpty := buildPageData(rt2, selectPageView(rt2, pageQuery{PageSize: 20}))
 	if pageEmpty.RefreshedAt != 0 {
 		t.Fatalf("refreshedAt with empty cache = %d, want 0", pageEmpty.RefreshedAt)
+	}
+}
+
+// TestManagementQueryAliases: the server must honor the JS URL spellings
+// (v= vendor tab, p= page) the same as vendor=/page=, so a reload keeps
+// skeleton lazy-fetch indexes aligned with the rendered grid.
+func TestManagementQueryAliases(t *testing.T) {
+	rt := testRuntime([]*scannedEntry{
+		testEntry("opencode", "oc-key-A"),
+		testEntry("deepseek", "ds-key-B"),
+		testEntry("deepseek", "ds-key-C"),
+	})
+	rt.lastScan = 100 // testRuntime pins now()=100; skip the periodic rescan
+	rtMu.Lock()
+	wasActive := active
+	active = rt
+	rtMu.Unlock()
+	defer func() {
+		rtMu.Lock()
+		active = wasActive
+		rtMu.Unlock()
+	}()
+
+	reqFor := func(alias bool) []byte {
+		q := url.Values{"partial": {"1"}, "page": {"1"}, "page-size": {"20"}, "vendor": {"deepseek"}}
+		if alias {
+			q = url.Values{"partial": {"1"}, "p": {"1"}, "v": {"deepseek"}}
+		}
+		raw, _ := json.Marshal(pluginapi.ManagementRequest{Path: "/status", Query: q})
+		return raw
+	}
+	stdRaw, errStd := handleManagement(reqFor(false))
+	if errStd != nil {
+		t.Fatalf("canonical query: %v", errStd)
+	}
+	aliasRaw, errAlias := handleManagement(reqFor(true))
+	if errAlias != nil {
+		t.Fatalf("alias query: %v", errAlias)
+	}
+	fragOf := func(envRaw []byte) pageFragments {
+		var env struct {
+			OK     bool            `json:"ok"`
+			Result json.RawMessage `json:"result"`
+		}
+		if err := json.Unmarshal(envRaw, &env); err != nil {
+			t.Fatalf("decode envelope: %v", err)
+		}
+		var resp struct {
+			Body string `json:"Body"`
+		}
+		if err := json.Unmarshal(env.Result, &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
+		body, err := base64.StdEncoding.DecodeString(resp.Body)
+		if err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		var frag pageFragments
+		if err := json.Unmarshal(body, &frag); err != nil {
+			t.Fatalf("decode fragments: %v", err)
+		}
+		return frag
+	}
+	aliasFrag := fragOf(aliasRaw)
+	stdFrag := fragOf(stdRaw)
+	countVendor := func(grid string) int { return strings.Count(grid, `data-vendor="deepseek"`) }
+	if n := countVendor(aliasFrag.GridHTML); n != 2 {
+		t.Fatalf("grid not filtered by v=: %d deepseek cards in %q", n, aliasFrag.GridHTML)
+	}
+	if strings.Contains(aliasFrag.GridHTML, `data-vendor="opencode"`) {
+		t.Fatalf("grid leaked other vendors despite v=deepseek")
+	}
+	if stdFrag.Total != 2 || aliasFrag.Total != 2 || stdFrag.Page != aliasFrag.Page {
+		t.Fatalf("alias mismatch: std total=%d page=%d, alias total=%d page=%d",
+			stdFrag.Total, stdFrag.Page, aliasFrag.Total, aliasFrag.Page)
 	}
 }
 

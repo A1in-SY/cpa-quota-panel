@@ -45,10 +45,17 @@ func handleManagement(raw []byte) ([]byte, error) {
 			Body:       []byte("not found"),
 		})
 	}
+	// The dashboard JS maintains state in the URL as v= (vendor tab) and p=
+	// (page); the fragment API uses vendor=/page=. Accept both spellings so a
+	// page reload with ?v=deepseek&p=1 renders the same filtered view the JS
+	// expects — otherwise skeleton cards get indexed against the unfiltered
+	// grid while lazy fetches target the filtered view, and they never fill.
 	q := pageQuery{
-		Vendor:   strings.TrimSpace(req.Query.Get("vendor")),
-		Page:     intParam(req.Query.Get("page"), 1),
-		PageSize: intParam(req.Query.Get("page-size"), defaultPageSize),
+		Vendor: strings.TrimSpace(firstNonEmpty(req.Query.Get("vendor"), req.Query.Get("v"))),
+		Page:   intParam(firstNonEmpty(req.Query.Get("page"), req.Query.Get("p")), 1),
+		PageSize: intParam(
+			firstNonEmpty(req.Query.Get("page-size"), req.Query.Get("pageSize")),
+			defaultPageSize),
 	}
 	force := len(req.Query.Get("refresh")) > 0
 	entryIdx := intParam0(req.Query.Get("entry-idx"), -1)
@@ -99,6 +106,16 @@ func intParam(v string, def int) int {
 		return def
 	}
 	return n
+}
+
+// firstNonEmpty returns the first value that is not the empty string.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // intParam0 is like intParam but keeps 0 (used for 0-based entry indexes).

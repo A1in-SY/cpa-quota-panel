@@ -105,9 +105,9 @@ def main() -> int:
     rc, env = call("management.handle", json.dumps(mreq).encode())
     assert rc == 0 and env["ok"], f"dashboard failed: {env}"
     html = body_str(env["result"]["Body"])
-    for needle in ["额度面板", "全部", "OpenCode", "DeepSeek", "sk******ef", "sk******56", "codex", "claude"]:
+    for needle in ["额度面板", "全部", "OpenCode", "Deepseek API", "智谱CodingPlan", "sk******ef", "sk******56", "codex", "claude"]:
         assert needle in html, f"dashboard missing {needle!r}"
-    print("dashboard OK: contains 全部/OpenCode/DeepSeek/masked keys/type tags")
+    print("dashboard OK: contains 全部/OpenCode/Deepseek API/智谱/masked keys/type tags")
 
     # Opening must NOT block on quota: without cache the entries render as
     # "missing" skeleton cards (data-state=missing + sk-body), no sync refresh.
