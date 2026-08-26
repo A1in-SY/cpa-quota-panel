@@ -38,7 +38,7 @@ p.sub{color:var(--app-text-regular);margin:0 0 24px}
 <body>
 <div class="wrap">
   <h1>额度面板 · UI Demo</h1>
-  <p class="sub">均按现有 CPAMP（CPA-Manager-Plus）设计语言绘制：玻璃拟态、data-* 彩色语义、大圆角、主蓝 #3b82f6。示例数据为当前服务器真实形状（OpenCode ×2 / DeepSeek ¥9.67 / MiniMax 需 admin-key）。<br>①② 已支持<b>跟随 CPAMP 深浅色</b>：页面右上角有「浅色/深色」切换可本地模拟；部署进 CPAMP 后会直接读取其注入的主题变量，实时跟随。</p>
+  <p class="sub">均按现有 CPAMP（CPA-Manager-Plus）设计语言绘制：玻璃拟态、data-* 彩色语义、大圆角、主蓝 #3b82f6。示例数据为当前服务器真实形状（OpenCode ×2 / DeepSeek ¥9.67 / MiniMax 需 admin-key）。<br>① ② ⑤ 已支持<b>跟随 CPAMP 深浅色</b>：页面右上角有「浅色/深色」切换可本地模拟；部署进 CPAMP 后会直接读取其注入的主题变量，实时跟随。</p>
   <div class="cards">
     <a class="card" href="demo-1-glass-light.html">
       <div class="badges"><span class="badge blue">默认推荐</span><span class="badge violet">跟随主题</span></div>
@@ -62,6 +62,18 @@ p.sub{color:var(--app-text-regular);margin:0 0 24px}
       <div class="badges"><span class="badge amber">彩色分类</span></div>
       <h3>④ 厂商专属色</h3>
       <p>每个厂商一种主题色（OpenCode 蓝 / DeepSeek 青 / MiniMax 红），品牌感更强，余量即大纲字。</p>
+      <span class="go">打开 →</span>
+    </a>
+    <a class="card" href="demo-5-loading-states.html">
+      <div class="badges"><span class="badge blue">交互</span><span class="badge green">已选定 D</span></div>
+      <h3>⑤ 刷新 Loading 态 · 方案对比</h3>
+      <p>四个方案可点击试玩；已选定 D 骨架屏 shimmer，并在 dashboard.go 落地为同页异步刷新。</p>
+      <span class="go">打开 →</span>
+    </a>
+    <a class="card" href="demo-6-opening-experience.html">
+      <div class="badges"><span class="badge blue">交互</span><span class="badge violet">已选定 A</span></div>
+      <h3>⑥ 点开面板 · 秒开与渐进加载 · 方案对比</h3>
+      <p>复现「点开面板要等全部额度查完」的问题，四个方案可点击试玩；已选定 A（秒开壳页 + 逐条懒加载）并落地 dashboard.go。</p>
       <span class="go">打开 →</span>
     </a>
   </div>

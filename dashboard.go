@@ -14,6 +14,7 @@ type vendorTab struct {
 }
 
 type pageEntry struct {
+	Idx           int
 	VendorID      string
 	VendorName    string
 	KeyTail       string
@@ -21,8 +22,12 @@ type pageEntry struct {
 	Windows       map[string]percentWindow
 	Balance       *balanceInfo
 	Grants        []grantRow
+	Models        []modelPlan
 	Err           string
 	Fresh         bool
+	// Missing reports that no quota result is cached yet; the card renders as a
+	// skeleton and the client lazy-loads it via ?entry-idx=.
+	Missing bool
 }
 
 type pageData struct {
@@ -30,6 +35,40 @@ type pageData struct {
 	Entries     []pageEntry
 	ConfigError string
 	RefreshedAt int64
+	Vendor      string
+	Page        int
+	PageSize    int
+	Total       int
+}
+
+// pageQuery describes the server-side pagination requested by the client.
+type pageQuery struct {
+	Vendor   string
+	Page     int
+	PageSize int
+}
+
+const (
+	defaultPageSize = 20
+	maxPageSize     = 100
+)
+
+// pageFragments is the JSON payload returned for in-place refresh requests
+// (?partial=1). The client swaps these fragments into the live page so the
+// skeleton state never causes a full navigation. When only one card is being
+// lazily loaded (?partial=1&entry-idx=N), EntryIdx/EntryHTML carry that single
+// card's replacement HTML.
+type pageFragments struct {
+	ConfigError string `json:"configError"`
+	RefreshedAt int64  `json:"refreshedAt"`
+	TabsHTML    string `json:"tabsHTML"`
+	GridHTML    string `json:"gridHTML"`
+	EmptyText   string `json:"emptyText"`
+	Page        int    `json:"page"`
+	PageSize    int    `json:"pageSize"`
+	Total       int    `json:"total"`
+	EntryIdx    int    `json:"entryIdx,omitempty"`
+	EntryHTML   string `json:"entryHTML,omitempty"`
 }
 
 // vendorIcon returns the official brand SVG (white glyph) for a vendor id.
@@ -89,8 +128,89 @@ func maskKey(tail string) string {
 	return "sk******" + t[len(t)-2:]
 }
 
-func buildPageData(rt *runtime) pageData {
-	out := pageData{RefreshedAt: rt.now()}
+// pageView is a snapshot of one filtered page of scanned entries, taken before
+// quota refresh so only the visible entries are queried.
+type pageView struct {
+	Vendor   string
+	Page     int
+	PageSize int
+	Total    int
+	Entries  []*scannedEntry
+}
+
+func normalizePageQuery(q pageQuery) pageQuery {
+	if q.Page < 1 {
+		q.Page = 1
+	}
+	if q.PageSize < 1 {
+		q.PageSize = defaultPageSize
+	}
+	if q.PageSize > maxPageSize {
+		q.PageSize = maxPageSize
+	}
+	return q
+}
+
+// pageWindow clamps page to the valid range and returns its slice window.
+func pageWindow(total, pageSize, page int) (int, int, int) {
+	pages := total / pageSize
+	if total%pageSize != 0 {
+		pages++
+	}
+	if pages < 1 {
+		pages = 1
+	}
+	if page > pages {
+		page = pages
+	}
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if end > total {
+		end = total
+	}
+	return page, start, end
+}
+
+// entryLess is the global display order: vendor id, then key tail.
+func entryLess(a, b *scannedEntry) bool {
+	if a.VendorID == b.VendorID {
+		return a.KeyTail < b.KeyTail
+	}
+	return a.VendorID < b.VendorID
+}
+
+// selectPageView filters rt.entries by vendor, sorts by display order, and
+// returns only the requested page.
+func selectPageView(rt *runtime, q pageQuery) pageView {
+	q = normalizePageQuery(q)
+	rtMu.RLock()
+	defer rtMu.RUnlock()
+	filtered := make([]*scannedEntry, 0, len(rt.entries))
+	for _, e := range rt.entries {
+		if q.Vendor == "" || e.VendorID == q.Vendor {
+			filtered = append(filtered, e)
+		}
+	}
+	sort.SliceStable(filtered, func(i, j int) bool { return entryLess(filtered[i], filtered[j]) })
+	page, start, end := pageWindow(len(filtered), q.PageSize, q.Page)
+	return pageView{
+		Vendor:   q.Vendor,
+		Page:     page,
+		PageSize: q.PageSize,
+		Total:    len(filtered),
+		Entries:  append([]*scannedEntry(nil), filtered[start:end]...),
+	}
+}
+
+// buildPageData renders one filtered page. Vendor tab counts always reflect the
+// full scan, not just the page.
+func buildPageData(rt *runtime, view pageView) pageData {
+	out := pageData{
+		Vendor:   view.Vendor,
+		Page:     view.Page,
+		PageSize: view.PageSize,
+		Total:    view.Total,
+	}
 	rtMu.RLock()
 	defer rtMu.RUnlock()
 	out.ConfigError = rt.configError
@@ -98,8 +218,19 @@ func buildPageData(rt *runtime) pageData {
 	for _, src := range rt.sources {
 		out.Vendors = append(out.Vendors, vendorTab{ID: src.ID, Name: src.Name})
 	}
-	for _, e := range rt.entries {
+	for i := range out.Vendors {
+		for _, e := range rt.entries {
+			if e.VendorID == out.Vendors[i].ID {
+				out.Vendors[i].Count++
+			}
+		}
+	}
+	// "上次刷新" 反映视图内最近一次真实拉取时间；没有缓存（全是待加载卡）时为 0，
+	// 前端据此不显示误导性的时间。
+	var latestFetch int64
+	for i, e := range view.Entries {
 		pe := pageEntry{
+			Idx:           i,
 			VendorID:      e.VendorID,
 			VendorName:    e.VendorName,
 			KeyTail:       e.KeyTail,
@@ -112,16 +243,17 @@ func buildPageData(rt *runtime) pageData {
 			pe.Windows = d.Windows
 			pe.Balance = d.Balance
 			pe.Grants = d.Grants
+			pe.Models = d.Models
+			if d.FetchedAt > latestFetch {
+				latestFetch = d.FetchedAt
+			}
+		} else {
+			pe.Missing = true
 		}
 		out.Entries = append(out.Entries, pe)
 	}
-	// Tabs in configured order; counts on 全部.
-	for i := range out.Vendors {
-		for _, e := range out.Entries {
-			if e.VendorID == out.Vendors[i].ID {
-				out.Vendors[i].Count++
-			}
-		}
+	if latestFetch > 0 {
+		out.RefreshedAt = latestFetch
 	}
 	sort.SliceStable(out.Entries, func(a, b int) bool {
 		if out.Entries[a].VendorID == out.Entries[b].VendorID {
@@ -136,7 +268,10 @@ func renderDashboard(page pageData) string {
 	var b strings.Builder
 	b.WriteString("<!doctype html>\n<html lang=\"zh-CN\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>额度面板</title>\n")
 	b.WriteString(dashboardCSS())
-	b.WriteString("</head>\n<body>\n")
+	b.WriteString("</head>\n<body data-refreshed-at=\"" + strconv.FormatInt(page.RefreshedAt, 10) +
+		"\" data-page=\"" + strconv.Itoa(page.Page) +
+		"\" data-page-size=\"" + strconv.Itoa(page.PageSize) +
+		"\" data-total=\"" + strconv.Itoa(page.Total) + "\">\n")
 	b.WriteString(dashboardBody(page))
 	b.WriteString("<script>\n")
 	b.WriteString(dashboardJS())
@@ -253,6 +388,17 @@ h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
 .tab .count{font-size:11px;opacity:.75;font-weight:600}
 .tab.active .count{opacity:.9}
 
+.pager{display:none;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap;padding:14px 0 2px}
+.pager.on{display:flex}
+.pager.busy{opacity:.55;pointer-events:none}
+.pg{min-width:34px;height:34px;padding:0 10px;display:inline-flex;align-items:center;justify-content:center;
+  border-radius:var(--qp-radius-sm);border:1px solid var(--qp-border);background:var(--qp-surface);
+  color:var(--qp-text-regular);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s ease}
+.pg:hover:not(:disabled){background:color-mix(in srgb,var(--qp-primary) 8%,transparent);color:var(--qp-primary)}
+.pg:disabled{opacity:.45;cursor:default}
+.pg.active{background:var(--qp-primary);border-color:var(--qp-primary);color:var(--qp-primary-contrast)}
+.pg.gap{border:0;background:transparent;pointer-events:none;min-width:14px;padding:0 2px}
+
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(335px,1fr));gap:var(--qp-gap)}
 .entry{background:var(--qp-surface);border:1px solid var(--qp-border);border-radius:var(--qp-radius-lg);
   backdrop-filter:blur(var(--qp-blur));-webkit-backdrop-filter:blur(var(--qp-blur));padding:18px 20px;display:none;flex-direction:column;gap:12px}
@@ -284,6 +430,8 @@ h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
 .bar>i.amber{background:var(--qp-amber)}
 .bar>i.red{background:var(--qp-red)}
 .win .reset{font-size:11px;color:var(--qp-text-muted)}
+.plan{display:flex;flex-direction:column;gap:8px}
+.plan .pname{font-size:12px;font-weight:700;color:var(--qp-text-primary)}
 
 .balance{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
 .balance .left{display:flex;flex-direction:column;gap:2px}
@@ -296,6 +444,22 @@ h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
 .errbox{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:var(--qp-radius-md);
   border:1px solid var(--qp-red-bd);background:var(--qp-red-bg);color:var(--qp-red-dark);font-size:12px;line-height:1.5}
 .errbox .ic{flex:0 0 auto;font-weight:800}
+/* ============ 刷新 loading：按钮 / tabs / 骨架屏 ============ */
+.btn.loading{opacity:.85;cursor:progress}
+.btn:disabled{pointer-events:none}
+.tabs.busy{opacity:.55;pointer-events:none}
+.sk-entry{pointer-events:none;min-height:152px;gap:14px}
+.sk-row{display:flex;align-items:center;gap:10px}
+.sk{display:block;height:11px;border-radius:var(--qp-radius-full);
+  background:linear-gradient(90deg,var(--qp-track) 25%,color-mix(in srgb,var(--qp-primary) 18%,var(--qp-surface-strong)) 50%,var(--qp-track) 75%);
+  background-size:200% 100%;animation:shimmer 1.2s linear infinite}
+.sk-avatar{width:38px;height:38px;flex:0 0 38px;border-radius:10px}
+.sk-title{width:88px;height:14px}
+.sk-key{width:112px;height:10px;margin-left:auto}
+.sk-line{width:100%}
+.sk-line.w70{width:70%}
+.sk-body{display:flex;flex-direction:column;gap:10px;padding-top:2px;min-height:64px;justify-content:center}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
 .empty{color:var(--qp-text-muted);padding:32px 0;text-align:center}
 #configErr{display:none;padding:12px 16px;border-radius:var(--qp-radius-md);border:1px solid var(--qp-red-bd);background:var(--qp-red-bg);color:var(--qp-red-dark);font-size:12px}
 #configErr.on{display:block}
@@ -312,7 +476,7 @@ func dashboardBody(page pageData) string {
 	b.WriteString("<div class=\"card head\"><div class=\"row\"><div><h1>额度面板</h1>")
 	b.WriteString("<p class=\"sub\">只读额度查询 · 数据来源：各厂商额度接口 · 分类筛选用</p></div>")
 	b.WriteString("<div class=\"head-actions\"><span class=\"last-refresh\" id=\"refreshAt\"></span>")
-	b.WriteString("<button class=\"btn btn-primary\" id=\"refresh\"><span class=\"spin\"></span>刷新</button></div></div></div>\n")
+	b.WriteString("<button class=\"btn btn-primary\" id=\"refresh\"><span class=\"spin\"></span><span class=\"lbl\">刷新</span></button></div></div></div>\n")
 
 	if page.ConfigError != "" {
 		b.WriteString("<div id=\"configErr\" class=\"on\">配置读取失败：" + html.EscapeString(page.ConfigError) + "</div>\n")
@@ -322,30 +486,82 @@ func dashboardBody(page pageData) string {
 
 	b.WriteString("<div class=\"stats\" id=\"stats\"></div>\n")
 	b.WriteString("<div class=\"tabs card\" id=\"tabs\">")
-	total := 0
-	for range page.Entries {
-		total++
+	b.WriteString(renderTabs(page, true))
+	b.WriteString("</div>\n")
+	b.WriteString("<div class=\"grid\" id=\"grid\">\n")
+	b.WriteString(renderGrid(page))
+	b.WriteString("</div>\n")
+	b.WriteString("<div class=\"pager\" id=\"pager\"></div>\n")
+	b.WriteString("<div class=\"empty\" id=\"emptyWrap\">")
+	b.WriteString(html.EscapeString(emptyText(page)))
+	b.WriteString("</div>\n")
+	b.WriteString("</div>\n")
+	return b.String()
+}
+
+// renderTabs renders the vendor filter tabs. allActive pre-activates the 全部
+// tab on the initial full page; partial refreshes re-apply activation client-side.
+// Counts always reflect the complete scan (not the current page).
+func renderTabs(page pageData, allActive bool) string {
+	var b strings.Builder
+	all := 0
+	for _, v := range page.Vendors {
+		all += v.Count
 	}
-	writeTab(&b, "", "全部", total, true)
+	writeTab(&b, "", "全部", all, allActive)
 	for _, v := range page.Vendors {
 		writeTab(&b, v.ID, v.Name, v.Count, false)
 	}
-	b.WriteString("</div>\n")
+	return b.String()
+}
+
+// renderGrid renders every entry card. Empty page returns "".
+func renderGrid(page pageData) string {
 	if len(page.Entries) == 0 {
-		if page.ConfigError == "" {
-			b.WriteString("<div class=\"empty\">白名单内暂无命中的 AI 提供商条目（或 config 中还没有对应 key）。</div>\n")
-		}
-		b.WriteString("</div>\n")
-		return b.String()
+		return ""
 	}
-	b.WriteString("<div class=\"grid\" id=\"grid\">\n")
+	var b strings.Builder
 	for _, e := range page.Entries {
 		renderEntry(&b, e)
 	}
-	b.WriteString("</div>\n")
-	b.WriteString("<div class=\"empty\" id=\"emptyWrap\"></div>\n")
-	b.WriteString("</div>\n")
 	return b.String()
+}
+
+// renderEntryHTML renders a single card (0-based index within the current view)
+// as standalone HTML for the ?entry-idx= lazy-load response.
+func renderEntryHTML(page pageData, idx int) string {
+	if idx < 0 || idx >= len(page.Entries) {
+		return ""
+	}
+	var b strings.Builder
+	renderEntry(&b, page.Entries[idx])
+	return b.String()
+}
+
+// emptyText is the message shown when the filtered view has nothing to list.
+func emptyText(page pageData) string {
+	if page.ConfigError != "" || page.Total > 0 {
+		return ""
+	}
+	if page.Vendor != "" {
+		return "该厂商暂无条目"
+	}
+	return "白名单内暂无命中的 AI 提供商条目（或 config 中还没有对应 key）。"
+}
+
+// buildPageFragments renders the dynamic sections as HTML fragments for the
+// in-place refresh endpoint.
+func buildPageFragments(page pageData) pageFragments {
+	return pageFragments{
+		ConfigError: page.ConfigError,
+		RefreshedAt: page.RefreshedAt,
+		TabsHTML:    renderTabs(page, false),
+		GridHTML:    renderGrid(page),
+		EmptyText:   emptyText(page),
+		Page:        page.Page,
+		PageSize:    page.PageSize,
+		Total:       page.Total,
+	}
 }
 
 func percentInt(p float64) int {
@@ -384,7 +600,15 @@ func renderEntry(b *strings.Builder, e pageEntry) {
 		}
 		iconHTML = "<span style=\"color:#fff;font-weight:800;font-size:16px\">" + html.EscapeString(letter) + "</span>"
 	}
-	b.WriteString("<div class=\"entry\" data-vendor=\"" + html.EscapeString(e.VendorID) + "\">\n")
+	state := "fresh"
+	if e.Missing {
+		state = "missing"
+	} else if !e.Fresh {
+		state = "stale"
+	}
+	b.WriteString("<div class=\"entry\" data-vendor=\"" + html.EscapeString(e.VendorID) +
+		"\" data-entry-idx=\"" + strconv.Itoa(e.Idx) +
+		"\" data-state=\"" + state + "\">\n")
 	b.WriteString("<div class=\"entry-head\"><div class=\"entry-title\">")
 	b.WriteString("<span class=\"entry-icon\" style=\"background:" + icBg + "\">" + iconHTML + "</span>")
 	b.WriteString("<div><div class=\"entry-name\">" + html.EscapeString(e.VendorName) + "</div>")
@@ -396,7 +620,9 @@ func renderEntry(b *strings.Builder, e pageEntry) {
 			b.WriteString(`<span class="badge type fallback">` + html.EscapeString(t) + `</span>`)
 		}
 	}
-	if e.Fresh {
+	if e.Missing {
+		b.WriteString("<span class=\"badge stale\">● 待加载</span>")
+	} else if e.Fresh {
 		b.WriteString("<span class=\"badge fresh\">● 实时</span>")
 	} else {
 		b.WriteString("<span class=\"badge stale\">● 缓存</span>")
@@ -408,7 +634,13 @@ func renderEntry(b *strings.Builder, e pageEntry) {
 	}
 	b.WriteString("</div>\n")
 	b.WriteString("<div class=\"entry-body\">")
-	if e.Err != "" {
+	if e.Missing {
+		// Skeleton body: the card header is real, the quota box shimmers in once
+		// the client lazily fetches this single entry (?entry-idx=N).
+		b.WriteString("<div class=\"sk-body\">")
+		b.WriteString("<div class=\"sk sk-line\"></div><div class=\"sk sk-line w70\"></div>")
+		b.WriteString("</div>")
+	} else if e.Err != "" {
 		b.WriteString("<div class=\"errbox\"><span class=\"ic\">⚠</span><span>" + html.EscapeString(e.Err) + "</span></div>")
 	} else {
 		switch {
@@ -425,6 +657,10 @@ func renderEntry(b *strings.Builder, e pageEntry) {
 					b.WriteString(" · 到期 " + html.EscapeString(g.ExpiresAt))
 				}
 				b.WriteString("</div>")
+			}
+		case len(e.Models) > 0:
+			for _, m := range e.Models {
+				renderPlanModels(b, m)
 			}
 		default:
 			b.WriteString("<div class=\"empty\">该条目暂无额度数据</div>")
@@ -452,6 +688,43 @@ func renderWindow(b *strings.Builder, key string, w percentWindow) {
 		b.WriteString("</div>\n")
 	}
 	b.WriteString("</div>\n")
+}
+
+// renderPlanModels renders one MiniMax coding-plan model with its two windows
+// (current interval + current week). The payload's *_remaining_percent is the
+// remaining fraction, so what is left drives both the label and the bar width.
+func renderPlanModels(b *strings.Builder, m modelPlan) {
+	intervalUsed := 100 - m.IntervalPercent
+	weeklyUsed := 100 - m.WeeklyPercent
+
+	b.WriteString("<div class=\"plan\"><div class=\"pname\">" + html.EscapeString(m.Name) + "</div>")
+
+	b.WriteString("<div class=\"win\"><div class=\"whead\"><span>当前周期</span>")
+	b.WriteString("<span><b>剩余 " + strconv.Itoa(percentInt(m.IntervalPercent)) + "%</b> · 已用 " + strconv.Itoa(percentInt(intervalUsed)) + "%")
+	if m.IntervalStatus == 0 {
+		b.WriteString(" · 暂停")
+	}
+	b.WriteString("</span></div>\n")
+	b.WriteString("<div class=\"bar\"><i class=\"" + toneClass(intervalUsed) + "\" style=\"width:" + strconv.Itoa(percentInt(m.IntervalPercent)) + "%\"></i></div>\n")
+	b.WriteString("<div class=\"reset\">剩余时长：" + html.EscapeString(fmtDuration(m.IntervalRemain)) + usageCount(m.IntervalUsed, m.IntervalTotal) + "</div>\n")
+	b.WriteString("</div>\n")
+
+	b.WriteString("<div class=\"win\"><div class=\"whead\"><span>本周</span>")
+	b.WriteString("<span><b>剩余 " + strconv.Itoa(percentInt(m.WeeklyPercent)) + "%</b> · 已用 " + strconv.Itoa(percentInt(weeklyUsed)) + "%")
+	if m.WeeklyStatus == 0 {
+		b.WriteString(" · 暂停")
+	}
+	b.WriteString("</span></div>\n")
+	b.WriteString("<div class=\"bar\"><i class=\"" + toneClass(weeklyUsed) + "\" style=\"width:" + strconv.Itoa(percentInt(m.WeeklyPercent)) + "%\"></i></div>\n")
+	b.WriteString("<div class=\"reset\">剩余时长：" + html.EscapeString(fmtDuration(m.WeeklyRemain)) + usageCount(m.WeeklyUsed, m.WeeklyTotal) + "</div>\n")
+	b.WriteString("</div></div>\n")
+}
+
+func usageCount(used, total int64) string {
+	if total <= 0 {
+		return ""
+	}
+	return " · 已用 " + strconv.Itoa(int(used)) + "/" + strconv.Itoa(int(total)) + " 次"
 }
 
 func renderBalance(b *strings.Builder, bi *balanceInfo) {
@@ -494,61 +767,357 @@ func currencyPrefix(c string) string {
 func dashboardJS() string {
 	return `
 (function(){
-  var showStats = document.getElementById('stats');
-  if (showStats) {
+  var grid = document.getElementById('grid');
+  var tabsBox = document.getElementById('tabs');
+  var statsBox = document.getElementById('stats');
+  var configErr = document.getElementById('configErr');
+  var emptyWrap = document.getElementById('emptyWrap');
+  var refreshBtn = document.getElementById('refresh');
+  var refreshAt = document.getElementById('refreshAt');
+  var pager = document.getElementById('pager');
+  var currentTab = '';
+  var page = 1, pageSize = 20, total = 0;
+  var busy = false;
+  var pageEmptyText = '';
+
+  try { currentTab = new URLSearchParams(window.location.search).get('v') || ''; } catch(_) {}
+  page = parseInt(document.body.getAttribute('data-page')||'1',10) || 1;
+  pageSize = parseInt(document.body.getAttribute('data-page-size')||'20',10) || 20;
+  total = parseInt(document.body.getAttribute('data-total')||'0',10) || 0;
+
+  function stat(label, value, cls){
+    var d=document.createElement('div');d.className='stat';
+    d.innerHTML='<div class="label">'+label+'</div><div class="value '+(cls||'')+'">'+value+'</div>';
+    return d;
+  }
+  function renderStats(){
+    if(!statsBox) return;
+    statsBox.innerHTML='';
     var cards = document.querySelectorAll('.entry');
-    var total = cards.length;
-    var ok = 0, err = 0, fresh = 0;
+    var n = cards.length, ok = 0, err = 0, fresh = 0, pending = 0;
     cards.forEach(function(c){
-      if (c.querySelector('.errbox') || c.querySelector('.badge.err')) err++;
+      if(c.getAttribute('data-state')==='missing'){ pending++; return; }
+      if(c.querySelector('.errbox') || c.querySelector('.badge.err')) err++;
       else ok++;
-      if (c.querySelector('.badge.fresh')) fresh++;
+      if(c.querySelector('.badge.fresh')) fresh++;
     });
-    function stat(label, value, cls){
-      var d=document.createElement('div');d.className='stat';
-      d.innerHTML='<div class="label">'+label+'</div><div class="value '+(cls||'')+'">'+value+'</div>';
-      return d;
-    }
-    showStats.append(
-      stat('条目总数', total),
-      stat('可用', ok, 'green'),
-      stat('异常', err, err>0?'red':'green'),
-      stat('实时', fresh+'/'+total, fresh>0?'green':'')
+    statsBox.append(
+      stat('本页条目', n),
+      stat('本页可用', ok, 'green'),
+      stat('本页异常', err, err>0?'red':'green'),
+      stat('本页实时', fresh+'/'+n, fresh>0?'green':'')
     );
+    if(pending>0) statsBox.append(stat('待加载', pending, ''));
+  }
+  function setRefreshAt(sec){
+    if(!refreshAt || !sec) return;
+    try {
+      var d = new Date(sec*1000);
+      refreshAt.textContent = '上次 ' + d.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+    } catch(_){ refreshAt.textContent=''; }
+  }
+  function setBtn(loading){
+    if(!refreshBtn) return;
+    refreshBtn.classList.toggle('loading', loading);
+    refreshBtn.disabled = loading;
+    var lbl = refreshBtn.querySelector('.lbl');
+    if(lbl) lbl.textContent = loading ? '刷新中…' : '刷新';
+  }
+  function applyTab(id){
+    id = id || '';
+    document.querySelectorAll('[data-tab]').forEach(function(t){
+      t.classList.toggle('active', t.getAttribute('data-tab')===id);
+    });
+    var cards = grid ? grid.querySelectorAll('.entry') : [];
+    var visible = 0;
+    cards.forEach(function(c){
+      var on = !id || c.getAttribute('data-vendor')===id;
+      c.classList.toggle('on', on);
+      if(on) visible++;
+    });
+    if(emptyWrap){
+      if(cards.length === 0){ emptyWrap.textContent = pageEmptyText; }
+      else if(id && visible === 0){ emptyWrap.textContent = '该厂商暂无条目'; }
+      else { emptyWrap.textContent = ''; }
+    }
+  }
+  function renderPager(){
+    if(!pager) return;
+    var pages = total ? Math.max(1, Math.ceil(total/pageSize)) : 0;
+    if(pages <= 1){ pager.innerHTML=''; pager.classList.remove('on'); return; }
+    pager.classList.add('on');
+    var i, html = '<button class="pg" data-page="'+(page-1)+'"'+(page<=1?' disabled':'')+'>上一页</button>';
+    var nums = [];
+    if(pages <= 7){
+      for(i=1;i<=pages;i++) nums.push(i);
+    } else {
+      nums.push(1);
+      var lo = Math.max(2, page-1), hi = Math.min(pages-1, page+1);
+      if(lo > 2) nums.push('gap');
+      for(i=lo;i<=hi;i++) nums.push(i);
+      if(hi < pages-1) nums.push('gap');
+      nums.push(pages);
+    }
+    nums.forEach(function(n){
+      if(n === 'gap') html += '<span class="pg gap">…</span>';
+      else html += '<button class="pg'+(n===page?' active':'')+'" data-page="'+n+'"'+(n===page?' disabled':'')+'>'+n+'</button>';
+    });
+    html += '<button class="pg" data-page="'+(page+1)+'"'+(page>=pages?' disabled':'')+'>下一页</button>';
+    pager.innerHTML = html;
+  }
+  function showSkeleton(label){
+    if(!grid) return;
+    var cards = grid.querySelectorAll('.entry.on');
+    if(cards.length === 0){
+      grid.innerHTML = '';
+      if(emptyWrap) emptyWrap.textContent = label || '正在加载…';
+      return;
+    }
+    var s = '';
+    cards.forEach(function(){
+      s += '<div class="entry on sk-entry">'
+         + '<div class="sk-row"><span class="sk sk-avatar"></span><span class="sk sk-title"></span><span class="sk sk-key"></span></div>'
+         + '<div class="sk sk-line"></div><div class="sk sk-line w70"></div></div>';
+    });
+    grid.innerHTML = s;
+  }
+  function renderFragments(data){
+    if(!data) return;
+    pageEmptyText = data.emptyText || '';
+    if(typeof data.page === 'number') page = data.page;
+    if(typeof data.pageSize === 'number') pageSize = data.pageSize;
+    if(typeof data.total === 'number') total = data.total;
+    if(tabsBox){
+      tabsBox.innerHTML = data.tabsHTML || '';
+      bindTabs();
+      if(currentTab){
+        var tabGone = true;
+        tabsBox.querySelectorAll('[data-tab]').forEach(function(t){
+          if(t.getAttribute('data-tab')===currentTab) tabGone = false;
+        });
+        if(tabGone) currentTab = '';
+      }
+    }
+    if(configErr){
+      configErr.classList.toggle('on', !!data.configError);
+      configErr.textContent = data.configError ? ('配置读取失败：'+data.configError) : '';
+    }
+    if(grid) grid.innerHTML = data.gridHTML || '';
+    renderStats();
+    renderPager();
+    setRefreshAt(data.refreshedAt);
+    applyTab(currentTab);
+    collectLazyEntries();
+  }
+  function restore(backup){
+    currentTab = backup.tab;
+    page = backup.page;
+    if(tabsBox){ tabsBox.innerHTML = backup.tabs; bindTabs(); }
+    if(configErr){ configErr.classList.toggle('on', backup.errOn); configErr.textContent = backup.errText; }
+    if(grid) grid.innerHTML = backup.grid;
+    if(emptyWrap) emptyWrap.textContent = backup.empty;
+    renderStats();
+    renderPager();
+    applyTab(currentTab);
+  }
+  function syncURL(targetPage){
+    try {
+      var u = new URL(window.location.href);
+      if(currentTab) u.searchParams.set('v', currentTab); else u.searchParams.delete('v');
+      u.searchParams.set('p', String(targetPage));
+      u.searchParams.delete('refresh');
+      u.searchParams.delete('partial');
+      history.replaceState(null,'',u.toString());
+    } catch(_) {}
+  }
+  function buildTarget(targetPage, force){
+    var target = window.location.pathname + '?partial=1&page=' + encodeURIComponent(String(targetPage)) + '&page-size=' + encodeURIComponent(String(pageSize));
+    if(currentTab) target += '&vendor=' + encodeURIComponent(currentTab);
+    if(force) target += '&refresh=1';
+    try {
+      var u = new URL(window.location.href);
+      u.searchParams.set('partial','1');
+      u.searchParams.set('page', String(targetPage));
+      u.searchParams.set('page-size', String(pageSize));
+      if(currentTab) u.searchParams.set('vendor', currentTab); else u.searchParams.delete('vendor');
+      if(force) u.searchParams.set('refresh','1'); else u.searchParams.delete('refresh');
+      target = u.toString();
+    } catch(_) {}
+    return target;
+  }
+  function loadPage(targetPage, force){
+    if(busy) return;
+    busy = true;
+    setBtn(true);
+    if(tabsBox) tabsBox.classList.add('busy');
+    if(pager) pager.classList.add('busy');
+    var backup = {
+      tabs: tabsBox ? tabsBox.innerHTML : '',
+      grid: grid ? grid.innerHTML : '',
+      empty: emptyWrap ? emptyWrap.textContent : '',
+      errOn: configErr ? configErr.classList.contains('on') : false,
+      errText: configErr ? configErr.textContent : '',
+      tab: currentTab,
+      page: page
+    };
+    showSkeleton(force ? '正在刷新…' : '正在加载…');
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function(){ ctl.abort(); }, 120000) : null;
+    function finish(){
+      busy = false;
+      setBtn(false);
+      if(tabsBox) tabsBox.classList.remove('busy');
+      if(pager) pager.classList.remove('busy');
+    }
+    fetch(buildTarget(targetPage, force), {
+      method:'GET',
+      headers:{'Accept':'application/json'},
+      credentials:'same-origin',
+      signal: ctl ? ctl.signal : undefined
+    }).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(data){
+      if(timer) clearTimeout(timer);
+      renderFragments(data);
+      syncURL(typeof data.page === 'number' ? data.page : targetPage);
+      finish();
+    }).catch(function(err){
+      if(timer) clearTimeout(timer);
+      restore(backup);
+      finish();
+      if(configErr){
+        var msg = (err && err.name === 'AbortError') ? '请求超时（120 秒）' : (err && err.message ? err.message : String(err));
+        configErr.classList.add('on');
+        configErr.textContent = '加载失败：' + msg + ' · 已恢复此前内容';
+      }
+    });
   }
 
-  var tabs = document.querySelectorAll('[data-tab]');
-  var refreshBtn = document.getElementById('refresh');
-  if (refreshBtn) refreshBtn.addEventListener('click', function(){
-    var u = new URL(window.location.href);
-    u.searchParams.set('refresh','1');
-    u.searchParams.delete('v');
-    window.location.href = u.toString();
-  });
-  function applyTab(id){
-    document.querySelectorAll('[data-tab]').forEach(function(t){ t.classList.toggle('active', t.getAttribute('data-tab')===id); });
-    document.querySelectorAll('.entry').forEach(function(c){
-      c.classList.toggle('on', !id || c.getAttribute('data-vendor')===id);
+  /* ===== 渐进懒加载：打开面板瞬间返回壳页，卡片逐条填充 =====
+   * 服务端对首次打开/翻页不再同步查询当页全部额度，缺失或过期的卡
+   * 通过 ?entry-idx=N 单独拉取，互不阻塞。并发上限 6（浏览器同源限制）。
+   * 请求在统一的 page 视图内按卡片下标寻址，key 附带 page/tab 防止切换
+   * 视图后旧响应错落到别的卡片上。 */
+  var ENTRY_CONCURRENCY = 6;
+  var entryQueue = [];
+  var entryInflight = {};
+  var entryRetry = {};
+  function entryKey(idx){ return idx + '\u0000' + page + '\u0000' + currentTab; }
+  function collectLazyEntries(){
+    if(!grid) return;
+    entryQueue = [];
+    grid.querySelectorAll('.entry').forEach(function(c){
+      var idx = c.getAttribute('data-entry-idx');
+      var st = c.getAttribute('data-state');
+      if(idx === null || idx === '' || st === 'fresh' || st === 'err') return;
+      var k = entryKey(idx);
+      if(entryInflight[k] || entryQueue.indexOf(k) !== -1) return;
+      entryQueue.push(k);
     });
-    var wrap = document.getElementById('emptyWrap');
-    if (wrap) wrap.textContent = '';
+    pumpEntryLoaders();
+  }
+  function pumpEntryLoaders(){
+    var active = 0;
+    for(var k in entryInflight) if(entryInflight[k]) active++;
+    while(active < ENTRY_CONCURRENCY && entryQueue.length){
+      var k = entryQueue.shift();
+      if(entryInflight[k]) continue;
+      entryInflight[k] = true;
+      active++;
+      fetchEntry(k, parseInt(k.split('\u0000')[0],10));
+    }
+  }
+  function entryTarget(idx){
+    // Not forced: the server decides via cache TTL whether to hit upstream,
+    // so repeated opens within the TTL return instantly from cache.
+    var target = buildTarget(page, false);
+    try {
+      var u = new URL(target);
+      u.searchParams.set('entry-idx', String(idx));
+      return u.toString();
+    } catch(_) {
+      return target + '&entry-idx=' + encodeURIComponent(String(idx));
+    }
+  }
+  function swapEntry(idx, html, key){
+    if(!grid || !html) return;
+    if(entryKey(idx) !== key) return; // 请求发出后翻页/切 tab，旧结果作废
+    var found = null;
+    grid.querySelectorAll('.entry').forEach(function(c){
+      if(c.getAttribute('data-entry-idx') === String(idx)) found = c;
+    });
+    if(!found) return; // 卡片已被移除
+    var div = document.createElement('div');
+    div.innerHTML = html;
+    var nc = div.firstElementChild;
+    if(!nc) return;
+    if(!currentTab || nc.getAttribute('data-vendor') === currentTab) nc.classList.add('on');
+    found.replaceWith(nc);
+    renderStats();
+  }
+  function fetchEntry(k, idx){
+    var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var timer = ctl ? setTimeout(function(){ ctl.abort(); }, 30000) : null;
+    fetch(entryTarget(idx), {
+      method:'GET',
+      headers:{'Accept':'application/json'},
+      credentials:'same-origin',
+      signal: ctl ? ctl.signal : undefined
+    }).then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    }).then(function(data){
+      if(timer) clearTimeout(timer);
+      delete entryInflight[k];
+      delete entryRetry[k];
+      if(data && typeof data.entryIdx === 'number' && data.entryHTML){
+        swapEntry(data.entryIdx, data.entryHTML, k);
+      }
+      pumpEntryLoaders();
+    }).catch(function(){
+      if(timer) clearTimeout(timer);
+      delete entryInflight[k];
+      var tries = (entryRetry[k] || 0) + 1;
+      if(tries <= 2){ // 有界重试：最多补两张，避免单卡失败留白
+        entryRetry[k] = tries;
+        entryQueue.push(k);
+        setTimeout(pumpEntryLoaders, 1200);
+      }
+      pumpEntryLoaders();
+    });
   }
   function onTab(e){
+    if(busy) return;
     var id = e.currentTarget.getAttribute('data-tab');
-    try { history.replaceState(null,'','?v='+encodeURIComponent(id)); } catch(_) {}
-    applyTab(id);
+    if(id === currentTab) return;
+    currentTab = id;
+    loadPage(1, false);
   }
-  tabs.forEach(function(t){ t.addEventListener('click', onTab); });
-  var q = new URLSearchParams(window.location.search).get('v');
-  applyTab(q || '');
+  function bindTabs(){
+    if(!tabsBox) return;
+    tabsBox.querySelectorAll('[data-tab]').forEach(function(t){
+      t.addEventListener('click', onTab);
+    });
+  }
 
-  var rt = document.getElementById('refreshAt');
-  if (rt) {
-    try {
-      var last = new Date(document.lastModified);
-      rt.textContent = '上次 ' + last.toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
-    } catch(_){ rt.textContent=''; }
-  }
+  if(refreshBtn) refreshBtn.addEventListener('click', function(){ loadPage(page, true); });
+  if(pager) pager.addEventListener('click', function(e){
+    if(busy) return;
+    var b = e.target.closest('.pg');
+    if(!b || b.disabled) return;
+    var n = parseInt(b.getAttribute('data-page'),10);
+    if(!isNaN(n) && n !== page) loadPage(n, false);
+  });
+
+  renderStats();
+  bindTabs();
+  pageEmptyText = emptyWrap ? emptyWrap.textContent : '';
+  applyTab(currentTab);
+  renderPager();
+  collectLazyEntries();
+  var at = parseInt(document.body.getAttribute('data-refreshed-at')||'0',10);
+  setRefreshAt(at);
 
   function fmt(sec){ sec=Math.max(0,Math.floor(sec)); var d=Math.floor(sec/86400),h=Math.floor((sec%86400)/3600),m=Math.floor((sec%3600)/60); var p=[]; if(d>0)p.push(d+'日'); if(h>0)p.push(h+'时'); if(m>0||p.length===0)p.push(m+'分'); return p.join(' '); }
   function tick(){

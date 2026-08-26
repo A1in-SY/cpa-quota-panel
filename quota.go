@@ -28,18 +28,50 @@ type grantRow struct {
 	ExpiresAt string `json:"expiresAt"`
 }
 
+// modelPlan is one MiniMax coding-plan model's remaining quota row (see the
+// /v1/api/openplatform/coding_plan/remains endpoint).
+type modelPlan struct {
+	Name            string
+	IntervalPercent float64 // current interval remaining %
+	WeeklyPercent   float64 // current week remaining %
+	IntervalRemain  int64   // seconds left in the current interval
+	WeeklyRemain    int64   // seconds left in the current week
+	IntervalUsed    int64   // requests used in the current interval
+	IntervalTotal   int64
+	WeeklyUsed      int64
+	WeeklyTotal     int64
+	IntervalStatus  int // 1 = normal
+	WeeklyStatus    int
+}
+
+// quantum sake; keeps common prefix readable
+func fmtDuration(seconds int64) string {
+	if seconds <= 0 {
+		return "0 分钟"
+	}
+	totalMinutes := seconds / 60
+	if totalMinutes < 60 {
+		return fmt.Sprintf("%d 分钟", totalMinutes)
+	}
+	hours := totalMinutes / 60
+	minutes := totalMinutes % 60
+	if minutes == 0 {
+		return fmt.Sprintf("%d 小时", hours)
+	}
+	return fmt.Sprintf("%d 小时 %d 分钟", hours, minutes)
+}
+
 // quotaData is the parsed quota result for one scanned entry.
 type quotaData struct {
 	Kind      string
 	Windows   map[string]percentWindow
 	Balance   *balanceInfo
 	Grants    []grantRow
+	Models    []modelPlan
 	FetchedAt int64
 	Status    int
 	Err       string
 }
-
-const maxRefreshPerCall = 40
 
 const userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.537.36 Safari/537.36"
 
@@ -124,6 +156,46 @@ func parseQuotaPayload(out *quotaData, body []byte) error {
 			Granted:  fmtNum(bi.GrantedBalance),
 			ToppedUp: fmtNum(bi.ToppedUpBalance),
 		}
+	case "coding-plan":
+		var payload struct {
+			ModelRemains []struct {
+				ModelName                string  `json:"model_name"`
+				IntervalRemainingPercent float64 `json:"current_interval_remaining_percent"`
+				WeeklyRemainingPercent   float64 `json:"current_weekly_remaining_percent"`
+				IntervalRemainsTime      float64 `json:"remains_time"` // millis
+				WeeklyRemainsTime        float64 `json:"weekly_remains_time"`
+				IntervalTotalCount       int64   `json:"current_interval_total_count"`
+				IntervalUsageCount       int64   `json:"current_interval_usage_count"`
+				WeeklyTotalCount         int64   `json:"current_weekly_total_count"`
+				WeeklyUsageCount         int64   `json:"current_weekly_usage_count"`
+				IntervalStatus           int     `json:"current_interval_status"`
+				WeeklyStatus             int     `json:"current_weekly_status"`
+			} `json:"model_remains"`
+			BaseResp struct {
+				StatusCode int `json:"status_code"`
+			} `json:"base_resp"`
+		}
+		if err := json.Unmarshal(body, &payload); err != nil {
+			return fmt.Errorf("invalid coding-plan payload: %w", err)
+		}
+		if len(payload.ModelRemains) == 0 {
+			return fmt.Errorf("coding-plan payload has no model_remains")
+		}
+		for _, m := range payload.ModelRemains {
+			out.Models = append(out.Models, modelPlan{
+				Name:            m.ModelName,
+				IntervalPercent: m.IntervalRemainingPercent,
+				WeeklyPercent:   m.WeeklyRemainingPercent,
+				IntervalRemain:  int64(m.IntervalRemainsTime / 1000),
+				WeeklyRemain:    int64(m.WeeklyRemainsTime / 1000),
+				IntervalUsed:    m.IntervalUsageCount,
+				IntervalTotal:   m.IntervalTotalCount,
+				WeeklyUsed:      m.WeeklyUsageCount,
+				WeeklyTotal:     m.WeeklyTotalCount,
+				IntervalStatus:  m.IntervalStatus,
+				WeeklyStatus:    m.WeeklyStatus,
+			})
+		}
 	case "grants":
 		var payload struct {
 			Grants []struct {
@@ -205,7 +277,8 @@ func storeQuota(rt *runtime, key string, data *quotaData) {
 	rt.quota[key] = data
 }
 
-// refreshQuota refreshes stale entries (all when entrySet is empty), bounded per call.
+// refreshQuota refreshes stale entries (all when entrySet is empty). Callers
+// pass the current page so the work stays bounded by the page size.
 func refreshQuota(rt *runtime, force bool, entrySet []*scannedEntry) {
 	if rt == nil {
 		return
@@ -226,13 +299,9 @@ func refreshQuota(rt *runtime, force bool, entrySet []*scannedEntry) {
 			stale = append(stale, e)
 		}
 	}
-	limit := len(stale)
-	if limit > maxRefreshPerCall {
-		limit = maxRefreshPerCall
-	}
-	for i := 0; i < limit; i++ {
-		d := fetchOneQuota(rt, stale[i])
-		storeQuota(rt, stale[i].VendorID+"\x00"+stale[i].APIKey, d)
+	for _, e := range stale {
+		d := fetchOneQuota(rt, e)
+		storeQuota(rt, e.VendorID+"\x00"+e.APIKey, d)
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -27,6 +28,13 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 	}
 	if !ids["opencode"] || !ids["deepseek"] || !ids["minimax"] {
 		t.Fatalf("default sources missing vendor: %v", ids)
+	}
+	for _, s := range cfg.Sources {
+		if s.ID == "minimax" {
+			if s.Kind != "coding-plan" || !strings.Contains(s.QuotaURL, "coding_plan/remains") {
+				t.Fatalf("default minimax source = kind %q url %q, want coding-plan remains endpoint", s.Kind, s.QuotaURL)
+			}
+		}
 	}
 }
 

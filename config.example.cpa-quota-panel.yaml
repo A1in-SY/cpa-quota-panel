@@ -22,6 +22,6 @@ plugins:
       #     kind: balance
       #   - id: minimax
       #     name: "MiniMax"
-      #     match-base-urls: ["https://api.minimaxi.com/v1"]
-      #     quota-url: "https://api.minimax.io/v1/dashboard/billing/credit_grants"   # 集成时校准
-      #     kind: grants
+      #     match-base-urls: ["https://www.minimaxi.com", "https://api.minimaxi.com/v1"]
+      #     quota-url: "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains"
+      #     kind: coding-plan   # 普通 sk-cp- key 即可；按 model 显示当前周期/本周剩余

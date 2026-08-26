@@ -109,6 +109,49 @@ def main() -> int:
         assert needle in html, f"dashboard missing {needle!r}"
     print("dashboard OK: contains 全部/OpenCode/DeepSeek/masked keys/type tags")
 
+    # Opening must NOT block on quota: without cache the entries render as
+    # "missing" skeleton cards (data-state=missing + sk-body), no sync refresh.
+    assert 'data-state="missing"' in html and "sk-body" in html, \
+        "opening page should render missing skeleton cards, got no sk-body"
+    print("open-OK: opening page returns instantly with missing skeleton cards")
+
+    # In-place refresh endpoint (?partial=1) powering the skeleton-screen flow.
+    mreq = {"Method": "GET", "Path": "/v0/resource/plugins/cpa-quota-panel/status",
+            "Headers": {}, "Query": {"refresh": ["1"], "partial": ["1"]}, "Body": ""}
+    rc, env = call("management.handle", json.dumps(mreq).encode())
+    assert rc == 0 and env["ok"], f"partial refresh failed: {env}"
+    data = json.loads(body_str(env["result"]["Body"]))
+    assert data.get("tabsHTML") and data.get("gridHTML"), f"partial fragments missing: {data}"
+    assert isinstance(data.get("refreshedAt"), int) and data["refreshedAt"] > 0, f"bad refreshedAt: {data}"
+    assert data.get("page") == 1 and data.get("pageSize") == 20 and data.get("total") == 2, f"bad paging: {data}"
+    assert "sk******ef" in data["gridHTML"], "partial gridHTML missing masked key"
+    print("partial OK: tabsHTML/gridHTML/refreshedAt/paging present")
+
+    # Single-entry lazy endpoint: ?entry-idx=N refreshes only that card and
+    # returns its standalone HTML (no full-page blocking).
+    mreq = {"Method": "GET", "Path": "/v0/resource/plugins/cpa-quota-panel/status",
+            "Headers": {}, "Query": {"refresh": ["1"], "partial": ["1"], "entry-idx": ["1"]}, "Body": ""}
+    rc, env = call("management.handle", json.dumps(mreq).encode())
+    assert rc == 0 and env["ok"], f"entry lazy failed: {env}"
+    lazy = json.loads(body_str(env["result"]["Body"]))
+    assert lazy.get("entryIdx") == 1 and lazy.get("entryHTML"), f"lazy entry missing: {lazy}"
+    assert 'data-entry-idx="1"' in lazy["entryHTML"], f"lazy card lacks entry-idx: {lazy['entryHTML']}"
+    # view order is sorted by vendor id: deepseek(0) < opencode(1)
+    assert "sk******56" not in lazy["entryHTML"] and "sk******ef" in lazy["entryHTML"], \
+        f"lazy card should be only entry 1 (opencode): {lazy['entryHTML']}"
+    print("entry-lazy OK: ?entry-idx=1 returns only that one card")
+
+    # Server-side pagination: page-size=1 page=2 returns only the second entry.
+    mreq = {"Method": "GET", "Path": "/v0/resource/plugins/cpa-quota-panel/status",
+            "Headers": {}, "Query": {"partial": ["1"], "page": ["2"], "page-size": ["1"]}, "Body": ""}
+    rc, env = call("management.handle", json.dumps(mreq).encode())
+    assert rc == 0 and env["ok"], f"paginated partial failed: {env}"
+    data2 = json.loads(body_str(env["result"]["Body"]))
+    assert data2.get("page") == 2 and data2.get("total") == 2, f"bad page 2 data: {data2}"
+    assert "sk******ef" in data2["gridHTML"] and "sk******56" not in data2["gridHTML"], \
+        f"page 2 should only contain the opencode entry: {data2['gridHTML']}"
+    print("pagination OK: page 2 of 2 contains only the second entry")
+
     os.unlink(host_cfg.name)
     print("ALL PASS")
     return 0

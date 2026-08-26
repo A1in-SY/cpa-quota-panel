@@ -39,6 +39,58 @@ func TestParseGrants(t *testing.T) {
 	}
 }
 
+func TestParseCodingPlan(t *testing.T) {
+	body := `{"model_remains":[
+		{"model_name":"general","remains_time":14843648,"weekly_remains_time":342443648,
+		 "current_interval_total_count":10,"current_interval_usage_count":3,
+		 "current_weekly_total_count":100,"current_weekly_usage_count":20,
+		 "current_interval_status":1,"current_weekly_status":1,
+		 "current_interval_remaining_percent":100,"current_weekly_remaining_percent":99}
+	],"base_resp":{"status_code":0,"status_msg":"success"}}`
+	out := &quotaData{Kind: "coding-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(out.Models) != 1 {
+		t.Fatalf("models = %+v", out.Models)
+	}
+	m := out.Models[0]
+	if m.Name != "general" || m.IntervalPercent != 100 || m.WeeklyPercent != 99 {
+		t.Fatalf("model = %+v", m)
+	}
+	// remains_time is in millis -> stored seconds.
+	if m.IntervalRemain != 14843 || m.WeeklyRemain != 342443 {
+		t.Fatalf("remain seconds = %d / %d", m.IntervalRemain, m.WeeklyRemain)
+	}
+	if m.IntervalUsed != 3 || m.IntervalTotal != 10 || m.WeeklyUsed != 20 || m.WeeklyTotal != 100 {
+		t.Fatalf("counts = %+v", m)
+	}
+}
+
+func TestParseCodingPlanEmpty(t *testing.T) {
+	out := &quotaData{Kind: "coding-plan"}
+	if err := parseQuotaPayload(out, []byte(`{"base_resp":{"status_code":0}}`)); err == nil {
+		t.Fatal("empty model_remains must error")
+	}
+}
+
+func TestFmtDuration(t *testing.T) {
+	cases := []struct {
+		sec  int64
+		want string
+	}{
+		{0, "0 分钟"},
+		{1500, "25 分钟"},
+		{3600, "1 小时"},
+		{5400, "1 小时 30 分钟"},
+	}
+	for _, c := range cases {
+		if got := fmtDuration(c.sec); got != c.want {
+			t.Fatalf("fmtDuration(%d) = %q, want %q", c.sec, got, c.want)
+		}
+	}
+}
+
 func TestParseQuotaPayloadError(t *testing.T) {
 	out := &quotaData{Kind: "percent-windows"}
 	if err := parseQuotaPayload(out, []byte(`not json`)); err == nil {

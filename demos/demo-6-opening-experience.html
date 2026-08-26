@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="white">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>额度面板 Demo ⑥ · 点开面板秒开与渐进加载方案对比</title>
+<style>
+/* ============ 独立预览默认值（浅色） ============ */
+:root{
+  --qp-bg:#eff2f7;
+  --qp-bg-gradient:linear-gradient(120deg,#f0f7ff 0%,#e7f2ff 50%,#edf7ff 100%);
+  --qp-blob-1:#7aa2ff; --qp-blob-2:#6bc5ff;
+  --qp-surface:rgba(255,255,255,.9); --qp-surface-strong:#fff; --qp-surface-muted:rgba(255,255,255,.62);
+  --qp-border:rgba(15,23,42,.08); --qp-border-strong:rgba(15,23,42,.12);
+  --qp-text-primary:#2c3e50; --qp-text-regular:#5f6c7b; --qp-text-muted:#8b95a6;
+  --qp-primary:#3b82f6; --qp-primary-hover:#60a5fa; --qp-primary-active:#2563eb; --qp-primary-contrast:#fff;
+  --qp-green:#22c55e; --qp-green-dark:#16a34a; --qp-green-bg:#f0fdf4; --qp-green-bd:#bbf7d0;
+  --qp-amber:#f59e0b; --qp-amber-dark:#d97706; --qp-amber-bg:#fffbeb; --qp-amber-bd:#fde68a;
+  --qp-red:#ef4444; --qp-red-dark:#dc2626; --qp-red-bg:#fef2f2; --qp-red-bd:#fecaca;
+  --qp-blue:#3b82f6; --qp-blue-dark:#2563eb; --qp-blue-bg:#eff6ff; --qp-blue-bd:#bfdbfe;
+  --qp-violet:#7c3aed; --qp-violet-dark:#6d28d9; --qp-violet-bg:#f5f3ff; --qp-violet-bd:#ddd6fe;
+  --qp-slate-dark:#475569; --qp-slate-bg:#f8fafc; --qp-slate-bd:#e2e8f0;
+  --qp-track:var(--qp-slate-bd);
+  --qp-radius-lg:20px; --qp-radius-md:12px; --qp-radius-sm:8px; --qp-radius-full:9999px;
+  --qp-gap:20px; --qp-blur:20px;
+  color-scheme:light;
+}
+/* ============ 深色回退 ============ */
+html[data-theme='dark'], html.theme-dark{
+  --qp-bg:#0a0a0a;
+  --qp-bg-gradient:linear-gradient(120deg,#0b1324 0%,#0a1426 50%,#091521 100%);
+  --qp-blob-1:#1b2a55; --qp-blob-2:#0f3d59;
+  --qp-surface:rgba(24,28,40,.9); --qp-surface-strong:#1b1f2a; --qp-surface-muted:rgba(255,255,255,.08);
+  --qp-border:rgba(255,255,255,.08); --qp-border-strong:rgba(255,255,255,.12);
+  --qp-text-primary:#e5e5e5; --qp-text-regular:#a3a3a3; --qp-text-muted:#7a7a7a;
+  --qp-primary:#60a5fa; --qp-primary-hover:#93c5fd; --qp-primary-active:#60a5fa; --qp-primary-contrast:#08111f;
+  --qp-green:#4ade80; --qp-green-dark:#86efac; --qp-green-bg:rgba(74,222,128,.14); --qp-green-bd:rgba(74,222,128,.24);
+  --qp-amber:#fbbf24; --qp-amber-dark:#fcd34d; --qp-amber-bg:rgba(251,191,36,.14); --qp-amber-bd:rgba(251,191,36,.24);
+  --qp-red:#f87171; --qp-red-dark:#fca5a5; --qp-red-bg:rgba(248,113,113,.14); --qp-red-bd:rgba(248,113,113,.24);
+  --qp-blue:#60a5fa; --qp-blue-dark:#93c5fd; --qp-blue-bg:rgba(96,165,250,.14); --qp-blue-bd:rgba(96,165,250,.24);
+  --qp-violet:#a78bfa; --qp-violet-dark:#c4b5fd; --qp-violet-bg:rgba(167,139,250,.14); --qp-violet-bd:rgba(167,139,250,.24);
+  --qp-slate-dark:#cbd5e1; --qp-slate-bg:rgba(148,163,184,.12); --qp-slate-bd:rgba(148,163,184,.2);
+  --qp-track:rgba(255,255,255,.08);
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+html,body{width:100%;min-height:100%}
+body{margin:0;color:var(--qp-text-primary);
+  font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif;
+  background:var(--qp-bg);background-image:var(--qp-bg-gradient);background-attachment:fixed;position:relative;
+  min-height:100vh;padding:24px;transition:background-color .25s ease,color .25s ease}
+body::before,body::after{content:"";position:fixed;border-radius:50%;filter:blur(70px);z-index:0;pointer-events:none}
+body::before{width:420px;height:420px;top:-120px;right:-80px;background:radial-gradient(circle,var(--qp-blob-1),transparent 70%);opacity:.45}
+body::after{width:460px;height:460px;bottom:-160px;left:-120px;background:radial-gradient(circle,var(--qp-blob-2),transparent 70%);opacity:.4}
+.main{position:relative;z-index:1;max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:var(--qp-gap)}
+
+.preview-switch{position:fixed;top:16px;right:16px;z-index:50;display:inline-flex;align-items:center;gap:4px;
+  padding:4px;border:1px solid var(--qp-border);border-radius:var(--qp-radius-full);background:var(--qp-surface);
+  backdrop-filter:blur(var(--qp-blur));-webkit-backdrop-filter:blur(var(--qp-blur));box-shadow:0 6px 18px -12px rgba(20,40,90,.3)}
+.preview-switch button{border:0;background:transparent;color:var(--qp-text-muted);font-size:12px;font-weight:600;
+  height:26px;padding:0 12px;border-radius:var(--qp-radius-full);cursor:pointer}
+.preview-switch button.on{background:var(--qp-primary);color:var(--qp-primary-contrast)}
+
+.card{background:var(--qp-surface);border:1px solid var(--qp-border);border-radius:var(--qp-radius-lg);
+  backdrop-filter:blur(var(--qp-blur));-webkit-backdrop-filter:blur(var(--qp-blur));padding:20px}
+.intro h1{font-size:20px;margin:0 0 4px}
+.intro .sub{color:var(--qp-text-regular);margin:4px 0 0;font-size:13px}
+.intro .tip{margin-top:12px;padding:10px 14px;border-radius:var(--qp-radius-md);background:var(--qp-blue-bg);
+  border:1px solid var(--qp-blue-bd);color:var(--qp-blue-dark);font-size:12px}
+
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:2px 9px;border-radius:var(--qp-radius-full);
+  border:1px solid;font-weight:600;white-space:nowrap;line-height:1.8}
+.tag.blue{color:var(--qp-blue-dark);background:var(--qp-blue-bg);border-color:var(--qp-blue-bd)}
+.tag.green{color:var(--qp-green-dark);background:var(--qp-green-bg);border-color:var(--qp-green-bd)}
+.tag.amber{color:var(--qp-amber-dark);background:var(--qp-amber-bg);border-color:var(--qp-amber-bd)}
+.tag.red{color:var(--qp-red-dark);background:var(--qp-red-bg);border-color:var(--qp-red-bd)}
+.tag.violet{color:var(--qp-violet-dark);background:var(--qp-violet-bg);border-color:var(--qp-violet-bd)}
+.tag.slate{color:var(--qp-slate-dark);background:var(--qp-slate-bg);border-color:var(--qp-slate-bd)}
+
+.opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:var(--qp-gap)}
+@media(max-width:920px){.opts{grid-template-columns:1fr}}
+.opt{background:var(--qp-surface);border:1px solid var(--qp-border);border-radius:var(--qp-radius-lg);
+  backdrop-filter:blur(var(--qp-blur));-webkit-backdrop-filter:blur(var(--qp-blur));padding:18px;display:flex;flex-direction:column;gap:14px}
+.opt-top{display:flex;align-items:flex-start;gap:12px}
+.opt-no{flex:0 0 34px;height:34px;border-radius:var(--qp-radius-sm);display:grid;place-items:center;
+  background:var(--qp-primary);color:var(--qp-primary-contrast);font-weight:800;font-size:15px}
+.opt-no.hot{background:var(--qp-green)}
+.opt-titles{flex:1;min-width:0}
+.opt-titles h2{margin:0;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.opt-titles p{margin:2px 0 0;color:var(--qp-text-muted);font-size:12px}
+
+/* ============ 试玩舞台 ============ */
+.stage{position:relative;border:1px dashed var(--qp-border-strong);border-radius:var(--qp-radius-md);
+  padding:14px;display:flex;flex-direction:column;gap:12px;overflow:hidden;
+  background:color-mix(in srgb,var(--qp-surface) 55%,transparent);transition:background .2s ease}
+.mini-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.mini-title{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}
+.mini-title .dot{width:8px;height:8px;border-radius:50%;background:var(--qp-green);box-shadow:0 0 0 3px var(--qp-green-bg)}
+.mini-title .dot.gray{background:var(--qp-text-muted);box-shadow:0 0 0 3px var(--qp-slate-bg)}
+.hidden-pane{display:none!important}
+.mstats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.mstat{background:var(--qp-surface-strong);border:1px solid var(--qp-border);border-radius:var(--qp-radius-sm);
+  padding:6px 9px;display:flex;flex-direction:column;gap:1px}
+.mstat .l{font-size:10px;color:var(--qp-text-muted)}
+.mstat .v{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+.mstat .v.g{color:var(--qp-green)} .mstat .v.r{color:var(--qp-red)}
+.mtabs{display:flex;gap:6px;flex-wrap:wrap}
+.mtab{font-size:11px;font-weight:600;padding:3px 11px;border-radius:var(--qp-radius-full);
+  border:1px solid var(--qp-border);background:var(--qp-surface);color:var(--qp-text-regular);cursor:pointer}
+.mtab.on{background:var(--qp-primary);color:var(--qp-primary-contrast);border-color:var(--qp-primary)}
+.mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.mcard{background:var(--qp-surface-strong);border:1px solid var(--qp-border);border-radius:var(--qp-radius-md);
+  padding:10px 12px;display:flex;flex-direction:column;gap:6px;opacity:0;transform:translateY(4px);
+  transition:opacity .25s ease,transform .25s ease}
+.mcard.show{opacity:1;transform:none}
+.mcard .t{font-size:11px;font-weight:700;display:flex;justify-content:space-between;gap:8px}
+.mcard .k{font:10px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--qp-text-muted)}
+.mcard .bar{height:6px;border-radius:var(--qp-radius-full);background:var(--qp-track);overflow:hidden}
+.mcard .bar i{display:block;height:100%;border-radius:var(--qp-radius-full)}
+.mcard .bar i.g{background:var(--qp-green)}
+.mcard .bar i.a{background:var(--qp-amber)}
+.mcard .bal{font-size:16px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--qp-green)}
+.mcard .bal.low{color:var(--qp-red)}
+.mcard .planrow{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--qp-text-regular)}
+.off{display:none!important}
+
+/* 骨架屏 */
+.sk-card{background:var(--qp-surface-strong);border:1px solid var(--qp-border);border-radius:var(--qp-radius-md);
+  padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+.sk{height:10px;border-radius:var(--qp-radius-full);
+  background:linear-gradient(90deg,var(--qp-track) 25%,color-mix(in srgb,var(--qp-primary) 16%,var(--qp-surface-strong)) 50%,var(--qp-track) 75%);
+  background-size:200% 100%;animation:shimmer 1.2s linear infinite}
+.sk.w40{width:40%}
+.sk.w70{width:70%}
+.sk.w90{width:90%}
+@keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid transparent;border-radius:var(--qp-radius-md);
+  height:36px;padding:0 16px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s ease;color:var(--qp-text-regular);
+  background:var(--qp-surface-muted);min-width:86px}
+.btn-primary{background:var(--qp-primary-active);color:var(--qp-primary-contrast);border-color:var(--qp-primary-active);
+  box-shadow:0 8px 18px -14px color-mix(in srgb,var(--qp-primary-active) 72%,transparent)}
+.btn-primary:hover{background:var(--qp-primary);transform:translateY(-1px);border-color:var(--qp-primary)}
+.btn-primary:active{transform:translateY(0)}
+.btn.loading{opacity:.85;cursor:progress;pointer-events:none}
+.btn:disabled{pointer-events:none;opacity:.5}
+.btn-sm{height:30px;padding:0 12px;font-size:12px;min-width:0}
+.spin{display:none;width:13px;height:13px;border-radius:50%;flex:0 0 13px;
+  border:2px solid color-mix(in srgb,var(--qp-primary-contrast) 35%,transparent);border-top-color:var(--qp-primary-contrast);
+  animation:spin .8s linear infinite}
+.btn.loading .spin{display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* 加载遮罩（现状问题） */
+.overlay{position:absolute;inset:0;z-index:7;display:none;align-items:center;justify-content:center;padding:14px;
+  background:color-mix(in srgb,var(--qp-bg) 45%,transparent);
+  backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px)}
+.overlay.on{display:flex}
+.ov-box{display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px 26px;text-align:center;
+  border-radius:var(--qp-radius-md);background:var(--qp-surface);border:1px solid var(--qp-border);
+  box-shadow:0 18px 40px -18px rgba(20,40,90,.35)}
+.ov-spin{width:22px;height:22px;border-radius:50%;
+  border:3px solid color-mix(in srgb,var(--qp-primary) 25%,transparent);border-top-color:var(--qp-primary);
+  animation:spin .8s linear infinite}
+.ov-box b{font-size:13px}
+.ov-box span{font-size:11px;color:var(--qp-text-muted);font-variant-numeric:tabular-nums}
+
+/* 进度对比（方案 C） */
+.cbars{display:flex;flex-direction:column;gap:12px;padding:4px 2px}
+.cbar-row{display:flex;flex-direction:column;gap:4px}
+.cbar-row .cl{display:flex;justify-content:space-between;font-size:11px;color:var(--qp-text-regular)}
+.cbar-row .cl b{color:var(--qp-text-primary);font-variant-numeric:tabular-nums}
+.cbar{position:relative;height:16px;border-radius:var(--qp-radius-full);background:var(--qp-track);overflow:hidden}
+.cbar>i{position:absolute;top:0;left:0;bottom:0;border-radius:var(--qp-radius-full);width:0;transition:width .6s ease}
+.cbar.seq>i{background:linear-gradient(90deg,#f59e0b,#ef4444)}
+.cbar.con>i{background:linear-gradient(90deg,#22c55e,#3b82f6)}
+.cbar>i::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.35),transparent);
+  animation:slide 1.1s ease-in-out infinite}
+@keyframes slide{0%{left:-45%;width:45%}100%{left:100%;width:45%}}
+.cbar.done>i::after{display:none}
+
+/* 状态条 & 说明 */
+.note{font-size:11px;color:var(--qp-text-muted);padding:7px 10px;border-radius:var(--qp-radius-sm);
+  background:var(--qp-surface-muted);border:1px solid var(--qp-border);transition:all .2s ease;min-height:30px}
+.note.busy{color:var(--qp-blue-dark);background:var(--qp-blue-bg);border-color:var(--qp-blue-bd)}
+.note.done{color:var(--qp-green-dark);background:var(--qp-green-bg);border-color:var(--qp-green-bd)}
+.foot{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--qp-text-regular)}
+.foot .row{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+
+.summary{margin-top:2px}
+.summary table{width:100%;border-collapse:collapse;font-size:12px}
+.summary th,.summary td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--qp-border)}
+.summary th{color:var(--qp-text-muted);font-weight:600;font-size:11px}
+.summary td b{color:var(--qp-text-primary)}
+.summary tr.pick td{background:color-mix(in srgb,var(--qp-green) 8%,transparent)}
+.summary .chk{color:var(--qp-green);font-weight:800}
+.summary .no{color:var(--qp-red);font-weight:800}
+</style>
+</head>
+<body>
+
+<div class="preview-switch" id="pvSwitch">
+  <button data-dt="white" class="on">浅色</button>
+  <button data-dt="dark">深色</button>
+</div>
+
+<div class="main">
+  <div class="card intro">
+    <span class="tag violet">⑥ 打开体验</span>
+    <h1>点开面板 · 秒开与渐进加载方案对比</h1>
+    <p class="sub">现状问题：点「额度面板」时，首次请求要<strong>同步等待当页全部额度查完</strong>（最多 20 条 × 逐条请求）才返回 HTML，慢时面板几十秒不出内容。下面每个方案都可点击试玩（模拟首次打开）。</p>
+    <div class="tip"><b>已选定并落地：</b>方案 A（秒开壳页 + 逐条懒加载）已在 <code>management.go / dashboard.go</code> 实现——首次打开不再同步刷新额度，缺失卡先渲染骨架，前端按 ?entry-idx=N 逐条并发填充，卡片互不阻塞。下方 C 为后端可叠加加速项，D 为巡航预热项。</div>
+  </div>
+
+  <!-- 现状问题 -->
+  <div class="card opt" data-opt="now">
+    <div class="opt-top">
+      <span class="opt-no" style="background:#ef4444">!</span>
+      <div class="opt-titles">
+        <h2>现在 · 点开面板 = 等全部额度查完 <span class="tag red">问题</span><span class="tag slate">首次打开无缓存最痛</span></h2>
+        <p>点开后整页请求一直挂着（服务端串行查当页全部条目），期间看不到任何东西；全部完成才一次性渲染。</p>
+      </div>
+    </div>
+    <div class="stage" id="nowStage">
+      <div class="mini-head">
+        <span class="mini-title"><i class="dot gray"></i>额度面板（缩略）</span>
+        <button class="btn btn-primary play-now" id="playNowBtn"><span class="spin"></span><span class="lbl">模拟点开面板</span></button>
+      </div>
+      <div class="pane hidden-pane" id="nowPane">
+        <div class="mstats">
+          <div class="mstat"><span class="l">本页条目</span><span class="v">20</span></div>
+          <div class="mstat"><span class="l">本页可用</span><span class="v g">20</span></div>
+          <div class="mstat"><span class="l">异常</span><span class="v g">0</span></div>
+          <div class="mstat"><span class="l">实时</span><span class="v g">20/20</span></div>
+        </div>
+        <div class="mtabs"><span class="mtab on">全部</span><span class="mtab">OpenCode</span><span class="mtab">DeepSeek</span><span class="mtab">MiniMax</span></div>
+        <div class="mgrid" id="nowGrid"></div>
+      </div>
+      <div class="overlay" id="nowOverlay">
+        <div class="ov-box">
+          <div class="ov-spin"></div>
+          <b>正在加载全部额度…</b>
+          <span id="nowOvCount">0 / 20</span>
+        </div>
+      </div>
+      <div class="note" id="nowNote">状态：就绪 · 点上方「模拟点开面板」复现当前体验</div>
+      <div class="foot">
+        <div class="row"><span class="tag blue">原因</span>management.go 首次请求里 <code>refreshQuota(…) → buildPageData() → 返回 HTML</code>，额度查询全部串行完成才给出响应。</div>
+        <div class="row"><span class="tag amber">代价</span>20 条 × 1~3s ≈ <b>20~60s 白屏/无反馈</b>；tab 切换、翻页同样会被当前页全量同步查询卡住。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="opts">
+
+    <!-- 方案 A -->
+    <section class="opt" data-opt="a">
+      <div class="opt-top">
+        <span class="opt-no hot">A</span>
+        <div class="opt-titles">
+          <h2>秒开壳页 + 逐条懒加载 <span class="tag green">推荐</span><span class="tag green">已落地</span></h2>
+          <p>首次请求只读缓存、立即返回；缺失卡渲染骨架并带 entry-idx，前端并发（≤6）逐条拉取填充，卡片互不阻塞。</p>
+        </div>
+      </div>
+      <div class="stage" id="aStage">
+        <div class="mini-head">
+          <span class="mini-title"><i class="dot"></i>额度面板（缩略）</span>
+          <button class="btn btn-primary play-a"><span class="spin"></span><span class="lbl">模拟点开面板</span></button>
+        </div>
+        <div class="pane hidden-pane" id="aPane">
+          <div class="mstats" id="aStats">
+            <div class="mstat"><span class="l">本页条目</span><span class="v">6</span></div>
+            <div class="mstat"><span class="l">本页可用</span><span class="v g" id="aOk">2</span></div>
+            <div class="mstat"><span class="l">异常</span><span class="v g">0</span></div>
+            <div class="mstat"><span class="l">待加载</span><span class="v" id="aWait">4</span></div>
+          </div>
+          <div class="mtabs"><span class="mtab on">全部</span><span class="mtab">OpenCode</span><span class="mtab">DeepSeek</span><span class="mtab">MiniMax</span></div>
+          <div class="mgrid" id="aGrid"></div>
+        </div>
+        <div class="note" id="aNote">状态：就绪 · 点上方「模拟点开面板」</div>
+        <div class="foot">
+          <div class="row"><span class="tag blue">改动</span>首屏不再同步 refresh；新增 <code>?entry-idx=N</code> 单条刷新；卡片带 data-state，前端维护 6 并发懒加载队列。</div>
+          <div class="row"><span class="tag green">优点</span>面板<strong>毫秒级可见</strong>、可立即操作；每张卡独立出现，慢厂商不拖累整页；已缓存卡秒显实时。</div>
+          <div class="row"><span class="tag amber">代价</span>首次要多发 N 条单卡请求（受并发 6 限制 ≈ 4 波）；比一次整页请求的 RPC 略多。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 方案 B -->
+    <section class="opt" data-opt="b">
+      <div class="opt-top">
+        <span class="opt-no">B</span>
+        <div class="opt-titles">
+          <h2>秒开 + 后台整页刷新 + 轮询 <span class="tag slate">复用现有接口</span></h2>
+          <p>首屏立即返回缓存/骨架，同时后台 goroutine 刷新整页；前端每 1~2s 轮询 ?partial=1，把刷好的卡逐波替换。</p>
+        </div>
+      </div>
+      <div class="stage" id="bStage">
+        <div class="mini-head">
+          <span class="mini-title"><i class="dot"></i>额度面板（缩略）</span>
+          <button class="btn btn-primary play-b"><span class="spin"></span><span class="lbl">模拟点开面板</span></button>
+        </div>
+        <div class="pane hidden-pane" id="bPane">
+          <div class="mstats">
+            <div class="mstat"><span class="l">本页条目</span><span class="v">6</span></div>
+            <div class="mstat"><span class="l">本页可用</span><span class="v g" id="bOk">2</span></div>
+            <div class="mstat"><span class="l">异常</span><span class="v g">0</span></div>
+            <div class="mstat"><span class="l">轮询中</span><span class="v" id="bWait">…</span></div>
+          </div>
+          <div class="mtabs"><span class="mtab on">全部</span><span class="mtab">OpenCode</span><span class="mtab">DeepSeek</span><span class="mtab">MiniMax</span></div>
+          <div class="mgrid" id="bGrid"></div>
+        </div>
+        <div class="note" id="bNote">状态：就绪 · 点上方「模拟点开面板」</div>
+        <div class="foot">
+          <div class="row"><span class="tag blue">改动</span>服务端后台刷新 + 客户端 setInterval 轮询 partial；理论上复用现有 <code>?partial=1</code> 即可。</div>
+          <div class="row"><span class="tag green">优点</span>不新增单卡端点；壳页秒开，卡按轮次渐进换新。</div>
+          <div class="row"><span class="tag amber">代价</span>轮询有空转请求；最后一卡仍要等全部完成才出现；后台 goroutine 生命周期/重复刷新需 lock 控制（rt.refreshing 可复用）。比 A 的实现复杂度和空转高。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 方案 C -->
+    <section class="opt" data-opt="c">
+      <div class="opt-top">
+        <span class="opt-no">C</span>
+        <div class="opt-titles">
+          <h2>服务端并发抓取 + 超时熔断 <span class="tag slate">纯后端，前端零改动</span></h2>
+          <p>把串行额度查询改成并发 worker 池（如 6），并给单条请求加超时。下面是同样 20 条、单条 1.2s 的对比（点击看进度）。</p>
+        </div>
+      </div>
+      <div class="stage" id="cStage">
+        <div class="mini-head">
+          <span class="mini-title"><i class="dot gray"></i>整页同步等待时长对比</span>
+          <button class="btn btn-primary play-c"><span class="spin"></span><span class="lbl">模拟对比</span></button>
+        </div>
+        <div class="cbars" id="cBars">
+          <div class="cbar-row">
+            <div class="cl"><span>现状 · 串行 20 条 ≈ 24s</span><b id="cSeqTime">24.0s</b></div>
+            <div class="cbar seq"><i id="cSeqBar"></i></div>
+          </div>
+          <div class="cbar-row">
+            <div class="cl"><span>并发 6 · 20 条 ≈ 4 波</span><b id="cConTime">4.8s</b></div>
+            <div class="cbar con"><i id="cConBar"></i></div>
+          </div>
+        </div>
+        <div class="note" id="cNote">状态：就绪 · 点上方「模拟对比」</div>
+        <div class="foot">
+          <div class="row"><span class="tag blue">改动</span>refreshQuota 改 worker 池并发；单条 host HTTP 超时需宿主侧支持（当前 <code>host.http.do</code> 无 timeout 字段，否则只能靠并发降等待）。</div>
+          <div class="row"><span class="tag green">优点</span>纯后端、前端体验不变；把“等待全部”从串行 N×latency 压到 ≈ 1×latency（理想 ~5s）。</div>
+          <div class="row"><span class="tag amber">注意</span>本质仍是“等当页全部完成才显示”，面板依旧要等；<b>建议叠加 A</b> 做到真正秒开；还需验证宿主对并发 host 回调的线程安全。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 方案 D -->
+    <section class="opt" data-opt="d">
+      <div class="opt-top">
+        <span class="opt-no">D</span>
+        <div class="opt-titles">
+          <h2>后台预热缓存（巡航刷新） <span class="tag slate">长期最优解之一</span></h2>
+          <p>插件启动后后台按 TTL 节拍持续预热全量额度缓存；点开面板时基本全是缓存命中，秒开且新鲜。</p>
+        </div>
+      </div>
+      <div class="stage" id="dStage">
+        <div class="mini-head">
+          <span class="mini-title"><i class="dot"></i>额度面板（缩略）</span>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm play-d" data-mode="cold">模拟冷启动</button>
+            <button class="btn btn-sm btn-primary play-d" data-mode="warm">模拟预热后</button>
+          </div>
+        </div>
+        <div class="pane hidden-pane" id="dPane">
+          <div class="mstats">
+            <div class="mstat"><span class="l">本页条目</span><span class="v">6</span></div>
+            <div class="mstat"><span class="l">本页可用</span><span class="v g" id="dOk">0</span></div>
+            <div class="mstat"><span class="l">异常</span><span class="v g">0</span></div>
+            <div class="mstat"><span class="l">缓存命中</span><span class="v" id="dHit">0/6</span></div>
+          </div>
+          <div class="mtabs"><span class="mtab on">全部</span><span class="mtab">OpenCode</span><span class="mtab">DeepSeek</span><span class="mtab">MiniMax</span></div>
+          <div class="mgrid" id="dGrid"></div>
+        </div>
+        <div class="note" id="dNote">状态：就绪 · 点「模拟冷启动」或「模拟预热后」</div>
+        <div class="foot">
+          <div class="row"><span class="tag blue">改动</span>configure 后起后台 goroutine，按 cache-ttl-seconds 节拍预热；打开面板时直接读缓存（可叠加 A 的双保险：冷时懒加载、热时全命中）。</div>
+          <div class="row"><span class="tag green">优点</span>非首次打开几乎瞬间且数据新鲜；额度接口调用频率可控。</div>
+          <div class="row"><span class="tag amber">注意</span>无人查看时也在消耗额度接口（关注限流/成本）；首次部署、改 key 后首开仍是冷的 → 单独用 D 解决不了“第一次”。</div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- 怎么选 -->
+  <div class="card summary">
+    <div class="opt-top" style="margin-bottom:10px">
+      <span class="opt-no">选</span>
+      <div class="opt-titles"><h2>怎么选</h2><p>核心：把「等全部」从<strong>服务端同步阻塞</strong>里拿出来，交给客户端按需/渐进消费。</p></div>
+    </div>
+    <table>
+      <tr><th>方案</th><th>面板可见</th><th>首屏数据</th><th>交互路径</th><th>实现成本</th><th>结论</th></tr>
+      <tr class="pick"><td><b>A · 秒开 + 逐条懒加载</b></td><td>~0s</td><td>逐卡渐进</td><td>新增 ?entry-idx</td><td>中</td><td class="chk">✔ 已落地</td></tr>
+      <tr><td>B · 后台刷新 + 轮询</td><td>~0s</td><td>按轮次</td><td>复用 partial + 轮询</td><td>中</td><td class="no">✘ 空转多</td></tr>
+      <tr><td>C · 后端并发 + 超时</td><td>仍等全部</td><td>一次出</td><td>无</td><td>低~中</td><td class="no">✘ 需宿主超时支持</td></tr>
+      <tr><td>D · 后台预热缓存</td><td>~0s（热）</td><td>全量（热）</td><td>无</td><td>中</td><td class="no">✘ 冷启动仍慢</td></tr>
+      <tr class="pick"><td><b>推荐组合：A + C + D</b></td><td>~0s</td><td>渐进 + 热缓存</td><td>entry-idx 为主</td><td>递进</td><td class="chk">✔ A 先落地，C/D 后续叠加</td></tr>
+    </table>
+  </div>
+</div>
+
+<script>
+/* ===== 主题切换（独立预览用；嵌入 CPAMP 后自动跟随） ===== */
+function applyTheme(){
+  const dark=document.documentElement.getAttribute('data-theme')==='dark';
+  document.documentElement.classList.toggle('theme-dark',dark);
+  document.querySelectorAll('#pvSwitch button').forEach(b=>b.classList.toggle('on',b.dataset.dt===(dark?'dark':'white')));
+}
+document.querySelectorAll('#pvSwitch button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.documentElement.setAttribute('data-theme',b.dataset.dt);
+    applyTheme();
+  });
+});
+applyTheme();
+
+/* ===== 卡片数据（模拟当页 6 张） ===== */
+const CARDS=[
+  {vendor:'opencode', name:'OpenCode',     key:'sk******c3', kind:'win', pct:62, cls:'g'},
+  {vendor:'opencode', name:'OpenCode',     key:'sk******k8', kind:'win', pct:41, cls:'a'},
+  {vendor:'deepseek', name:'DeepSeek 官方', key:'sk******i9', kind:'bal', val:'¥9.67'},
+  {vendor:'deepseek', name:'DeepSeek 官方', key:'sk******p2', kind:'bal', val:'¥3.21', low:true},
+  {vendor:'minimax',  name:'MiniMax',      key:'sk-cp******m4', kind:'plan'},
+  {vendor:'minimax',  name:'MiniMax',      key:'sk-cp******q7', kind:'plan'},
+];
+
+function cardHTML(c){
+  let body;
+  if(c.kind==='win') body='<div class="bar"><i class="'+c.cls+'" style="width:'+c.pct+'%"></i></div>';
+  else if(c.kind==='bal') body='<span class="bal'+(c.low?' low':'')+'">'+c.val+'</span>';
+  else body='<div class="planrow"><span>当前周期 71%</span><span>本周 88%</span></div>';
+  return '<div class="mcard"><div class="t"><span>'+c.name+'</span><span>'+(c.kind==='bal'?'余额':(c.kind==='win'?'剩余 '+c.pct+'%':'coding-plan'))+'</span></div><div class="k">'+c.key+'</div>'+body+'</div>';
+}
+function skelHTML(){
+  return '<div class="sk-card"><div class="sk w40"></div><div class="sk w70"></div><div class="sk w90"></div></div>';
+}
+function showPane(pane){ pane.classList.remove('hidden-pane'); }
+function setBtn(btn,on,label){
+  btn.classList.toggle('loading',on);
+  btn.disabled=on;
+  const lbl=btn.querySelector('.lbl');
+  if(lbl && label) lbl.textContent=label;
+  else if(lbl) lbl.textContent=on?'加载中…':'重试';
+}
+function flashCard(grid, gridHTML){
+  // 按 DOM 顺序替换第一张骨架卡（与加载顺序一致）
+  const skel=grid.querySelector('.sk-card');
+  if(!skel){ const d=document.createElement('div'); d.innerHTML=gridHTML; grid.appendChild(d.firstElementChild); return; }
+  const d=document.createElement('div'); d.innerHTML=gridHTML;
+  const nc=d.firstElementChild;
+  if(nc){ skel.replaceWith(nc); requestAnimationFrame(()=>nc.classList.add('show')); }
+}
+function pushSkeletons(grid, n){
+  for(let i=0;i<n;i++){ const d=document.createElement('div'); d.innerHTML=skelHTML(); grid.appendChild(d.firstElementChild); }
+}
+function pushCard(grid, card){
+  const d=document.createElement('div'); d.innerHTML=cardHTML(card);
+  const nc=d.firstElementChild; grid.appendChild(nc); requestAnimationFrame(()=>nc.classList.add('show'));
+}
+
+/* ================= 现状问题 ================= */
+const nowGrid=document.getElementById('nowGrid'), nowOverlay=document.getElementById('nowOverlay'),
+      nowNote=document.getElementById('nowNote'), nowPane=document.getElementById('nowPane'),
+      nowOvCount=document.getElementById('nowOvCount'), playNow=document.getElementById('playNowBtn');
+function nowRender(){
+  // 模拟真实的一页 20 条全部就绪
+  const list=[];
+  for(let i=0;i<20;i++) list.push(CARDS[i % CARDS.length]);
+  nowGrid.innerHTML=list.map(cardHTML).join('');
+  [...nowGrid.children].forEach((el,i)=>setTimeout(()=>el.classList.add('show'), i*8));
+}
+playNow.addEventListener('click',function(){
+  if(playNow.disabled) return;
+  setBtn(playNow,true,'加载中…');
+  showPane(nowPane);
+  nowOverlay.classList.add('on');
+  nowNote.classList.add('busy'); nowNote.classList.remove('done');
+  const start=Date.now(), TOTAL=4200;
+  let tick=0;
+  const t=setInterval(()=>{
+    tick=Math.min(TOTAL, tick+180);
+    nowOvCount.textContent=Math.round(tick/TOTAL*20)+' / 20';
+    if(tick>=TOTAL){
+      clearInterval(t);
+      nowOverlay.classList.remove('on');
+      nowRender();
+      setBtn(playNow,false);
+      nowNote.classList.remove('busy'); nowNote.classList.add('done');
+      nowNote.textContent='模拟完成：从点击到面板出现 ≈ '+(TOTAL/1000).toFixed(1)+'s（期间整页无内容）';
+    }
+  },90);
+});
+
+/* ================= A · 秒开 + 逐条懒加载 ================= */
+const aGrid=document.getElementById('aGrid'), aNote=document.getElementById('aNote'),
+      aPane=document.getElementById('aPane'), aOk=document.getElementById('aOk'), aWait=document.getElementById('aWait');
+const aPlay=document.querySelector('.play-a');
+let aTimer=null;
+aPlay.addEventListener('click',function(){
+  if(aPlay.disabled) return;
+  setBtn(aPlay,false);
+  showPane(aPane);
+  const start=Date.now();
+  // 壳页毫秒级出现：2 张已缓存秒显，4 张先骨架
+  aGrid.innerHTML='';
+  pushCard(aGrid, CARDS[0]);
+  pushCard(aGrid, CARDS[1]);
+  pushSkeletons(aGrid, 4);
+  aWait.textContent=4; aOk.textContent=2;
+  aNote.classList.add('busy'); aNote.classList.remove('done');
+  aNote.textContent='壳页已显示（'+(Date.now()-start)+' ms）· 正在逐条加载 4/6…';
+  let loaded=2, next=2;
+  const step=()=>{
+    if(next>=CARDS.length){
+      clearTimeout(aTimer);
+      aNote.classList.remove('busy'); aNote.classList.add('done');
+      aNote.textContent='全部完成 ✓ 壳页 '+(Date.now()-start)+' ms 可见，全量 '+((Date.now()-start)/1000).toFixed(1)+' s（卡片逐条渐进，互不阻塞）';
+      return;
+    }
+    flashCard(aGrid, cardHTML(CARDS[next]));
+    loaded++; next++;
+    aWait.textContent=Math.max(0,CARDS.length-loaded);
+    aOk.textContent=loaded;
+    aNote.textContent='壳页已显示 · 已加载 '+loaded+'/'+CARDS.length+'（第 '+(next-1)+' 张独立返回，不阻塞其它卡）…';
+    aTimer=setTimeout(step, 350+Math.random()*650);
+  };
+  aTimer=setTimeout(step, 350);
+});
+
+/* ================= B · 秒开 + 后台刷新 + 轮询 ================= */
+const bGrid=document.getElementById('bGrid'), bNote=document.getElementById('bNote'),
+      bPane=document.getElementById('bPane'), bOk=document.getElementById('bOk'), bWait=document.getElementById('bWait');
+const bPlay=document.querySelector('.play-b');
+let bTimer=null;
+bPlay.addEventListener('click',function(){
+  if(bPlay.disabled) return;
+  setBtn(bPlay,false);
+  showPane(bPane);
+  const start=Date.now();
+  bGrid.innerHTML='';
+  pushCard(bGrid, CARDS[0]);
+  pushCard(bGrid, CARDS[1]);
+  pushSkeletons(bGrid, 4);
+  bOk.textContent=2; bWait.textContent='等待首波';
+  bNote.classList.add('busy'); bNote.classList.remove('done');
+  bNote.textContent='壳页已显示（'+(Date.now()-start)+' ms）· 后台刷新中，开始轮询 ?partial=1…';
+  let poll=1;
+  const wave=()=>{
+    poll++;
+    const batch = poll===2 ? [2,3] : [4,5];
+    batch.forEach((i,td)=> setTimeout(()=>{
+      flashCard(bGrid, cardHTML(CARDS[i]));
+      if(i===3||i===5){ bOk.textContent=String(2+(poll-1)*2); }
+    }, td*220));
+    bWait.textContent='第 '+poll+' 波';
+    const doneCount=Math.min(CARDS.length, 2+(poll-1)*2);
+    bNote.textContent='轮询 '+poll+' 次 · 已 '+doneCount+'/'+CARDS.length+' · 用时约 '+((Date.now()-start)/1000).toFixed(1)+'s';
+    if(poll<3) bTimer=setTimeout(wave, 1000);
+    else{
+      clearTimeout(bTimer);
+      bNote.classList.remove('busy'); bNote.classList.add('done');
+      bNote.textContent='全部完成 ✓ 用时约 '+((Date.now()-start)/1000).toFixed(1)+'s（期间共 '+poll+' 次轮询请求）';
+    }
+  };
+  bTimer=setTimeout(wave, 1000);
+});
+
+/* ================= C · 并发 + 超时 ================= */
+const cSeqTime=document.getElementById('cSeqTime'), cConTime=document.getElementById('cConTime'),
+      cSeqBar=document.getElementById('cSeqBar'), cConBar=document.getElementById('cConBar'), cNote=document.getElementById('cNote');
+const cPlay=document.querySelector('.play-c');
+cPlay.addEventListener('click',function(){
+  if(cPlay.disabled) return;
+  setBtn(cPlay,true);
+  cNote.classList.add('busy'); cNote.classList.remove('done');
+  cNote.textContent='正在模拟…串行 20 条逐条排队 vs 并发 6 同时进行';
+  cSeqBar.style.width='0'; cConBar.style.width='0';
+  const seqStart=Date.now();
+  const seqT=setInterval(()=>{
+    const p=(Date.now()-seqStart)/24000*100;
+    cSeqBar.style.width=Math.min(100,p)+'%';
+    cSeqTime.textContent=(Math.min(24,(Date.now()-seqStart)/1000)).toFixed(1)+'s';
+    if(p>=100){ clearInterval(seqT); cSeqBar.classList.add('done'); }
+  },90);
+  setTimeout(()=>{
+    const conStart=Date.now();
+    const conT=setInterval(()=>{
+      const p=(Date.now()-conStart)/4800*100;
+      cConBar.style.width=Math.min(100,p)+'%';
+      cConTime.textContent=(Math.min(4.8,(Date.now()-conStart)/1000)).toFixed(1)+'s';
+      if(p>=100){ clearInterval(conT); cConBar.classList.add('done'); }
+    },90);
+    setTimeout(()=>{
+      setBtn(cPlay,false);
+      cNote.classList.remove('busy'); cNote.classList.add('done');
+      cNote.textContent='对比完成 ✓ 并发 6 比串行快约 5 倍；但面板仍要等全部，建议叠加方案 A 实现真正秒开';
+    },4900);
+  },24500);
+});
+
+/* ================= D · 后台预热 ================= */
+const dGrid=document.getElementById('dGrid'), dNote=document.getElementById('dNote'),
+      dPane=document.getElementById('dPane'), dOk=document.getElementById('dOk'), dHit=document.getElementById('dHit');
+const dPlays=document.querySelectorAll('.play-d');
+let dTimer=null;
+dPlays.forEach(b=>b.addEventListener('click',function(){
+  if(b.disabled) return;
+  b.disabled=true;
+  clearTimeout(dTimer);
+  showPane(dPane);
+  const mode=b.dataset.mode;
+  dNote.classList.remove('done'); dNote.classList.add('busy');
+  if(mode==='warm'){
+    // 预热后：全量缓存命中，秒开且全部实时
+    dGrid.innerHTML='';
+    CARDS.forEach((c,i)=>{ const d=document.createElement('div'); d.innerHTML=cardHTML(c); const nc=d.firstElementChild; dGrid.appendChild(nc); requestAnimationFrame(()=>nc.classList.add('show')); });
+    dOk.textContent=6; dHit.textContent='6/6';
+    dNote.classList.remove('busy'); dNote.classList.add('done');
+    dNote.textContent='预热后 ✓ 打开即全量显示（缓存命中 6/6），打开耗时 ≈ 80ms';
+  }else{
+    // 冷启动：仍要逐张等价于方案 A 的加载，预热没帮上第一次
+    dGrid.innerHTML='';
+    pushSkeletons(dGrid, CARDS.length);
+    dOk.textContent=0; dHit.textContent='0/6';
+    dNote.textContent='冷启动：缓存全空，仍需逐条查询（≈ 方案 A 首开）…';
+    let loaded=0;
+    const step=()=>{
+      if(loaded>=CARDS.length){ dNote.classList.remove('busy'); dNote.classList.add('done'); dNote.textContent='冷启动完成 ✓ 用时约 2.4s——可见：预热只解决“以后”，解决不了“第一次”。'; return; }
+      dTimer=setTimeout(step, 300+Math.random()*600);
+      flashCard(dGrid, cardHTML(CARDS[loaded]));
+      loaded++;
+      dOk.textContent=loaded; dHit.textContent=loaded+'/6';
+      dNote.textContent='冷启动：正在加载 '+loaded+'/'+CARDS.length+' …';
+    };
+    dTimer=setTimeout(step,200);
+  }
+  setTimeout(()=>{ dPlays.forEach(x=>x.disabled=false); }, mode==='warm'?400:3200);
+}));
+</script>
+</body>
+</html>

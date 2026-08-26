@@ -126,9 +126,9 @@ func normalizeAndValidate(cfg *pluginConfig) error {
 			return fmt.Errorf("quota-sources[%d].id %q: quota-url is required", i, src.ID)
 		}
 		switch src.Kind {
-		case "percent-windows", "balance", "grants":
+		case "percent-windows", "balance", "grants", "coding-plan":
 		default:
-			return fmt.Errorf("quota-sources[%d].id %q: kind must be percent-windows|balance|grants", i, src.ID)
+			return fmt.Errorf("quota-sources[%d].id %q: kind must be percent-windows|balance|grants|coding-plan", i, src.ID)
 		}
 	}
 	return nil
@@ -154,14 +154,14 @@ func defaultSources() []QuotaSource {
 			Kind:          "balance",
 		},
 		{
-			ID:            "minimax",
-			Name:          "MiniMax",
-			MatchBaseURLs: []string{"https://api.minimaxi.com/v1"},
-			// The balance endpoint requires an admin key; a normal API key gets
-			// a token_type_mismatch 403. Provide quota-sources[].admin-key to enable.
-			QuotaURL: "https://api.minimaxi.com/v1/account/balance",
-			Auth:     "bearer",
-			Kind:     "balance",
+			ID:   "minimax",
+			Name: "MiniMax",
+			// The coding plan /remains endpoint works with a normal sk-cp- API key,
+			// unlike /v1/account/balance which requires an admin key (403 otherwise).
+			MatchBaseURLs: []string{"https://www.minimaxi.com", "https://api.minimaxi.com/v1"},
+			QuotaURL:      "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+			Auth:          "bearer",
+			Kind:          "coding-plan",
 		},
 	}
 }
