@@ -933,27 +933,21 @@ func dashboardJS() string {
   }
   function syncURL(targetPage){
     try {
-      var u = new URL(window.location.href);
-      if(currentTab) u.searchParams.set('v', currentTab); else u.searchParams.delete('v');
-      u.searchParams.set('p', String(targetPage));
-      u.searchParams.delete('refresh');
-      u.searchParams.delete('partial');
-      history.replaceState(null,'',u.toString());
+      // Visible URL carries exactly v=/p= (the JS spellings); transient fetch
+      // params are never written back so nothing can leak between states.
+      var q = '';
+      if(currentTab) q = 'v=' + encodeURIComponent(currentTab) + '&';
+      history.replaceState(null,'', window.location.pathname + '?' + q + 'p=' + encodeURIComponent(String(targetPage)));
     } catch(_) {}
   }
+  // Fragment URLs are always built from scratch — never inherited from
+  // window.location.search. Stale v=/p= written by syncURL used to ride along
+  // into every fetch, overriding the caller's intended view server-side and
+  // desynchronizing skeleton indexes from the rendered grid.
   function buildTarget(targetPage, force){
     var target = window.location.pathname + '?partial=1&page=' + encodeURIComponent(String(targetPage)) + '&page-size=' + encodeURIComponent(String(pageSize));
     if(currentTab) target += '&vendor=' + encodeURIComponent(currentTab);
     if(force) target += '&refresh=1';
-    try {
-      var u = new URL(window.location.href);
-      u.searchParams.set('partial','1');
-      u.searchParams.set('page', String(targetPage));
-      u.searchParams.set('page-size', String(pageSize));
-      if(currentTab) u.searchParams.set('vendor', currentTab); else u.searchParams.delete('vendor');
-      if(force) u.searchParams.set('refresh','1'); else u.searchParams.delete('refresh');
-      target = u.toString();
-    } catch(_) {}
     return target;
   }
   function loadPage(targetPage, force){
@@ -1067,6 +1061,23 @@ func dashboardJS() string {
     found.replaceWith(nc);
     renderStats();
   }
+  function markEntryFailed(idx){
+    if(!grid) return;
+    var found = null;
+    grid.querySelectorAll('.entry').forEach(function(c){
+      if(c.getAttribute('data-entry-idx') === String(idx)) found = c;
+    });
+    if(!found || found.getAttribute('data-state') !== 'missing') return;
+    found.setAttribute('data-state','err');
+    var body = found.querySelector('.sk-body');
+    if(body){
+      body.className = '';
+      body.innerHTML = '<div class="empty">额度加载失败 · 点右上角「刷新」重试</div>';
+    }
+    var badge = found.querySelector('.entry-meta .badge.stale');
+    if(badge){ badge.textContent = '● 失败'; badge.className = 'badge err'; }
+    renderStats();
+  }
   function fetchEntry(k, idx){
     var ctl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     var timer = ctl ? setTimeout(function(){ ctl.abort(); }, 30000) : null;
@@ -1094,6 +1105,11 @@ func dashboardJS() string {
         entryRetry[k] = tries;
         entryQueue.push(k);
         setTimeout(pumpEntryLoaders, 1200);
+      } else {
+        // Retries exhausted: mark the card failed instead of shimmering
+        // forever (the data may still land in cache later; 刷新 recovers).
+        delete entryRetry[k];
+        markEntryFailed(parseInt(k.split('\u0000')[0],10));
       }
       pumpEntryLoaders();
     });
