@@ -85,9 +85,10 @@ func vendorIcon(id string) string {
 	case "minimax":
 		return `<svg role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="#fff" d="M11.43 3.92a.86.86 0 1 0-1.718 0v14.236a1.999 1.999 0 0 1-3.997 0V9.022a.86.86 0 1 0-1.718 0v3.87a1.999 1.999 0 0 1-3.997 0V11.49a.57.57 0 0 1 1.139 0v1.404a.86.86 0 0 0 1.719 0V9.022a1.999 1.999 0 0 1 3.997 0v9.134a.86.86 0 0 0 1.719 0V3.92a1.998 1.998 0 1 1 3.996 0v11.788a.57.57 0 1 1-1.139 0zm10.572 3.105a2 2 0 0 0-1.999 1.997v7.63a.86.86 0 0 1-1.718 0V3.923a1.999 1.999 0 0 0-3.997 0v16.16a.86.86 0 0 1-1.719 0V18.08a.57.57 0 1 0-1.138 0v2a1.998 1.998 0 0 0 3.996 0V3.92a.86.86 0 0 1 1.719 0v12.73a1.999 1.999 0 0 0 3.996 0V9.023a.86.86 0 1 1 1.72 0v6.686a.57.57 0 0 0 1.138 0V9.022a2 2 0 0 0-1.998-1.997"/></svg>`
 	case "zhipu":
-		// Z.ai official "Z" mark, white glyph traced from the asset on Zhipu's
-		// own CDN (z-cdn.chatglm.cn/z-ai/static/logo.svg).
-		return `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path fill="#fff" d="M12.98 4.7l-.867 1.233a.8.8 0 01-.6.333H4v-1.56h8.36zM16.2 4.7L8.76 15.273H3.8v1.547h.027 6.913l.867-1.234a.8.8 0 01.602-.346H20v-1.533h-7.087l7.44-10.573H16.2z"/></svg>`
+		// Z.ai official "Z" mark — the exact shapes from Zhipu's own CDN asset
+		// (z-cdn.chatglm.cn/z-ai/static/logo.svg), used verbatim in its native
+		// 30x30 coordinate system; white glyph on the vendor tile.
+		return `<svg viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg"><g fill="#fff"><path d="M15.47,7.1l-1.3,1.85c-0.2,0.29-0.54,0.47-0.9,0.47h-7.1V7.09C6.16,7.1,15.47,7.1,15.47,7.1z"/><polygon points="24.3,7.1 13.14,22.91 5.7,22.91 16.86,7.1"/><path d="M14.53,22.91l1.31-1.86c0.2-0.29,0.54-0.47,0.9-0.47h7.09v2.33H14.53z"/></g></svg>`
 	default:
 		return ""
 	}
