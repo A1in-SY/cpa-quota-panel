@@ -104,8 +104,8 @@ func vendorColor(id string) string {
 	case "minimax":
 		return "#E73562"
 	case "zhipu":
-		// Zhipu brand blue (bigmodel.cn).
-		return "#3859FF"
+		// The official Z.ai mark sits on a near-black tile (#2D2D2D in the CDN SVG).
+		return "#2D2D2D"
 	default:
 		return "#3b82f6"
 	}
