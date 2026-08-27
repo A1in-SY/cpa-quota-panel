@@ -20,3 +20,6 @@ config.yaml
 # Misc
 *.log
 .gocache/
+
+# Local scratch
+.z-preview.svg
