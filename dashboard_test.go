@@ -266,3 +266,23 @@ func TestRenderEntryHTMLLazy(t *testing.T) {
 		t.Fatalf("card should show balance, got %q", frag.EntryHTML)
 	}
 }
+
+// TestFragmentJSONKeepsEntryIdxZero: entry-idx=0 is a real card (the first
+// skeleton). omitempty used to drop entryIdx:0 from the payload and the client
+// then discarded the successful fill, leaving the card loading forever.
+func TestFragmentJSONKeepsEntryIdxZero(t *testing.T) {
+	rt := testRuntime([]*scannedEntry{testEntry("opencode", "oc-key-A")})
+	view := selectPageView(rt, pageQuery{PageSize: 20})
+	page := buildPageData(rt, view)
+
+	frag := buildPageFragments(page)
+	frag.EntryIdx = 0
+	frag.EntryHTML = renderEntryHTML(page, 0)
+	raw, err := json.Marshal(frag)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(raw), `"entryIdx":0`) {
+		t.Fatalf("entryIdx zero must be serialized, got %s", raw)
+	}
+}

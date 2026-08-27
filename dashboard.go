@@ -67,8 +67,11 @@ type pageFragments struct {
 	Page        int    `json:"page"`
 	PageSize    int    `json:"pageSize"`
 	Total       int    `json:"total"`
-	EntryIdx    int    `json:"entryIdx,omitempty"`
-	EntryHTML   string `json:"entryHTML,omitempty"`
+	// EntryIdx must NOT be omitempty: index 0 is a real index (the first
+	// skeleton card, i.e. typically deepseek) and omitting it made the client
+	// discard an otherwise successful single-card fill.
+	EntryIdx  int    `json:"entryIdx"`
+	EntryHTML string `json:"entryHTML,omitempty"`
 }
 
 // vendorIcon returns the official brand SVG (white glyph) for a vendor id.
@@ -1093,8 +1096,11 @@ func dashboardJS() string {
       if(timer) clearTimeout(timer);
       delete entryInflight[k];
       delete entryRetry[k];
-      if(data && typeof data.entryIdx === 'number' && data.entryHTML){
-        swapEntry(data.entryIdx, data.entryHTML, k);
+      if(data && data.entryHTML){
+        // Prefer the echoed index, but fall back to the queued one: a missing
+        // entryIdx must never silently drop an otherwise successful fill.
+        var idx = (typeof data.entryIdx === 'number') ? data.entryIdx : parseInt(k.split('\u0000')[0],10);
+        swapEntry(idx, data.entryHTML, k);
       }
       pumpEntryLoaders();
     }).catch(function(){
