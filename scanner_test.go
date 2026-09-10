@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 )
 
@@ -139,6 +140,48 @@ openai-compatibility:
 	}
 	if len(entries) != 1 || entries[0].APIKey != "ds-enabled-key" {
 		t.Fatalf("entries = %v, want only ds-enabled-key", keys)
+	}
+}
+
+func TestScanConfigFileSkipsWildcardExcludedKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	cfg := `
+codex-api-key:
+  - api-key: "ds-toggled-off"
+    base-url: "https://api.deepseek.com"
+    excluded-models:
+      - '*'
+  - api-key: "ds-model-filtered"
+    base-url: "https://api.deepseek.com"
+    excluded-models:
+      - deepseek-flash
+openai-compatibility:
+  - name: DeepseekCompat
+    base-url: "https://api.deepseek.com/anthropic"
+    api-key-entries:
+      - api-key: "ds-compat-key"
+        excluded-models:
+          - '*'
+`
+	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := scanConfigFile(path, defaultSources())
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	var keys []string
+	for _, e := range entries {
+		keys = append(keys, e.APIKey)
+	}
+	sort.Strings(keys)
+	// The "*" exclusion is the host's per-credential off switch for *-api-key
+	// entries; a partial model exclusion is not. openai-compatibility key entries
+	// have no excluded-models field, so the host ignores it there.
+	want := []string{"ds-compat-key", "ds-model-filtered"}
+	if len(keys) != len(want) || keys[0] != want[0] || keys[1] != want[1] {
+		t.Fatalf("entries = %v, want %v", keys, want)
 	}
 }
 

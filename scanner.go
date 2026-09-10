@@ -20,8 +20,9 @@ type hostConfig struct {
 }
 
 type keyEntry struct {
-	APIKey  string `yaml:"api-key"`
-	BaseURL string `yaml:"base-url"`
+	APIKey         string   `yaml:"api-key"`
+	BaseURL        string   `yaml:"base-url"`
+	ExcludedModels []string `yaml:"excluded-models"`
 }
 
 type openAICompat struct {
@@ -59,6 +60,19 @@ func keyTail(key string, n int) string {
 	return "…" + key[len(key)-n:]
 }
 
+// disabledByExcludedModels reports whether a credential carries the wildcard
+// exclusion ("*") that the host management UI writes when a config API-key entry
+// is toggled off. The host excludes such a credential from every model, so it
+// never serves requests.
+func disabledByExcludedModels(excluded []string) bool {
+	for _, m := range excluded {
+		if strings.TrimSpace(m) == "*" {
+			return true
+		}
+	}
+	return false
+}
+
 // defaultBaseURL returns the well-known upstream base-url for providers whose
 // entry leaves base-url empty, so whitelist matching still sees a URL.
 func defaultBaseURL(providerType string) string {
@@ -85,10 +99,15 @@ func scanConfigFile(path string, sources []QuotaSource) ([]*scannedEntry, error)
 	}
 
 	var items []rawItem
-	collect := func(providerType string, providerBase string, entries []keyEntry) {
+	collect := func(providerType string, providerBase string, entries []keyEntry, honorExcludedModels bool) {
 		for _, e := range entries {
 			key := strings.TrimSpace(e.APIKey)
 			if key == "" {
+				continue
+			}
+			// Only the *-api-key lists carry excluded-models; openai-compatibility
+			// key entries have no such field, so the host ignores it there.
+			if honorExcludedModels && disabledByExcludedModels(e.ExcludedModels) {
 				continue
 			}
 			// Effective base-url: entry-level overrides, else provider-level
@@ -103,12 +122,12 @@ func scanConfigFile(path string, sources []QuotaSource) ([]*scannedEntry, error)
 			items = append(items, rawItem{ProviderType: providerType, BaseURL: base, APIKey: key})
 		}
 	}
-	collect("codex", "", hc.Codex)
-	collect("xai", "", hc.XAI)
-	collect("claude", "", hc.Claude)
-	collect("gemini", "", hc.Gemini)
-	collect("interactions", "", hc.Interactions)
-	collect("vertex", "", hc.Vertex)
+	collect("codex", "", hc.Codex, true)
+	collect("xai", "", hc.XAI, true)
+	collect("claude", "", hc.Claude, true)
+	collect("gemini", "", hc.Gemini, true)
+	collect("interactions", "", hc.Interactions, true)
+	collect("vertex", "", hc.Vertex, true)
 	for _, p := range hc.OpenAICompat {
 		// A provider-level disabled flag keeps every key under it out of routing,
 		// so its entries must not reach the quota panel either.
@@ -116,7 +135,7 @@ func scanConfigFile(path string, sources []QuotaSource) ([]*scannedEntry, error)
 			continue
 		}
 		base := normalizeBaseURL(p.BaseURL)
-		collect("openai-compatibility", base, p.APIKeyEntries)
+		collect("openai-compatibility", base, p.APIKeyEntries, false)
 	}
 
 	// Group by (vendor, key).
