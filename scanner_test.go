@@ -113,6 +113,35 @@ func keysOf(m map[string]*scannedEntry) []string {
 	return out
 }
 
+func TestScanConfigFileSkipsDisabledProvider(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	cfg := `
+openai-compatibility:
+  - base-url: "https://api.deepseek.com/anthropic"
+    disabled: true
+    api-key-entries:
+      - api-key: "ds-disabled-key"
+  - base-url: "https://api.deepseek.com/anthropic"
+    api-key-entries:
+      - api-key: "ds-enabled-key"
+`
+	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := scanConfigFile(path, defaultSources())
+	if err != nil {
+		t.Fatalf("scan: %v", err)
+	}
+	var keys []string
+	for _, e := range entries {
+		keys = append(keys, e.APIKey)
+	}
+	if len(entries) != 1 || entries[0].APIKey != "ds-enabled-key" {
+		t.Fatalf("entries = %v, want only ds-enabled-key", keys)
+	}
+}
+
 func TestScanAdminKeyPropagation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

@@ -26,6 +26,7 @@ type keyEntry struct {
 
 type openAICompat struct {
 	BaseURL       string     `yaml:"base-url"`
+	Disabled      bool       `yaml:"disabled"`
 	APIKeyEntries []keyEntry `yaml:"api-key-entries"`
 }
 
@@ -109,6 +110,11 @@ func scanConfigFile(path string, sources []QuotaSource) ([]*scannedEntry, error)
 	collect("interactions", "", hc.Interactions)
 	collect("vertex", "", hc.Vertex)
 	for _, p := range hc.OpenAICompat {
+		// A provider-level disabled flag keeps every key under it out of routing,
+		// so its entries must not reach the quota panel either.
+		if p.Disabled {
+			continue
+		}
 		base := normalizeBaseURL(p.BaseURL)
 		collect("openai-compatibility", base, p.APIKeyEntries)
 	}
