@@ -139,7 +139,7 @@ func defaultSources() []QuotaSource {
 	return []QuotaSource{
 		{
 			ID:            "opencode",
-			Name:          "OpenCode",
+			Name:          "OpenCode Go",
 			MatchBaseURLs: []string{"https://opencode.ai/zen/go/v1"},
 			QuotaURL:      "https://opencode.ai/zen/go/v1/usage",
 			Auth:          "bearer",
@@ -165,7 +165,7 @@ func defaultSources() []QuotaSource {
 		},
 		{
 			ID:   "zhipu",
-			Name: "智谱CodingPlan",
+			Name: "智谱 CodingPlan",
 			// 智谱开放平台（bigmodel）国内版：anthropic 变体、coding 专用端点与 v1
 			// 兼容端点都按 GLM Coding Plan 用量接口查询（/api/biz/usage，普通 API key 即可）。
 			MatchBaseURLs: []string{

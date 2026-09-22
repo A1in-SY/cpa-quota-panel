@@ -11,7 +11,7 @@ plugins:
       # 白名单厂商模板（默认已内置 opencode/deepseek/minimax/智谱/Cline Pass 五家，以下为明确写法）
       # quota-sources:
       #   - id: opencode
-      #     name: "OpenCode"
+      #     name: "OpenCode Go"
       #     match-base-urls: ["https://opencode.ai/zen/go/v1"]
       #     quota-url: "https://opencode.ai/zen/go/v1/usage"
       #     kind: percent-windows
@@ -26,7 +26,7 @@ plugins:
       #     quota-url: "https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains"
       #     kind: coding-plan   # 普通 sk-cp- key 即可；按 model 显示当前周期/本周剩余
       #   - id: zhipu
-      #     name: "智谱CodingPlan"
+      #     name: "智谱 CodingPlan"
       #     match-base-urls:
       #       - "https://open.bigmodel.cn/api/anthropic"
       #       - "https://open.bigmodel.cn/api/coding/paas/v4"

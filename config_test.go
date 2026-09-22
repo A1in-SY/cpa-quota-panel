@@ -52,7 +52,7 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 					t.Fatalf("unexpected zhipu match-base-url %q", u)
 				}
 			}
-			if s.Name != "智谱CodingPlan" {
+			if s.Name != "智谱 CodingPlan" {
 				t.Fatalf("zhipu name = %q", s.Name)
 			}
 		}
