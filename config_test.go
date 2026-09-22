@@ -16,7 +16,7 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 	if cfg.CacheTTL != 300 {
 		t.Fatalf("default cache-ttl = %d", cfg.CacheTTL)
 	}
-	if len(cfg.Sources) != 4 {
+	if len(cfg.Sources) != 5 {
 		t.Fatalf("default sources = %d", len(cfg.Sources))
 	}
 	ids := map[string]bool{}
@@ -26,7 +26,7 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 			t.Fatalf("default source incomplete: %+v", s)
 		}
 	}
-	if !ids["opencode"] || !ids["deepseek"] || !ids["minimax"] || !ids["zhipu"] {
+	if !ids["opencode"] || !ids["deepseek"] || !ids["minimax"] || !ids["zhipu"] || !ids["cline"] {
 		t.Fatalf("default sources missing vendor: %v", ids)
 	}
 	for _, s := range cfg.Sources {
@@ -54,6 +54,14 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 			}
 			if s.Name != "智谱CodingPlan" {
 				t.Fatalf("zhipu name = %q", s.Name)
+			}
+		}
+		if s.ID == "cline" {
+			if s.Kind != "cline-plan" || !strings.Contains(s.QuotaURL, "/api/v1/users/me/plan/usage-limits") {
+				t.Fatalf("default cline source = kind %q url %q, want cline-plan usage-limits endpoint", s.Kind, s.QuotaURL)
+			}
+			if len(s.MatchBaseURLs) != 1 || s.MatchBaseURLs[0] != "https://api.cline.bot" {
+				t.Fatalf("default cline match-base-urls = %v", s.MatchBaseURLs)
 			}
 		}
 	}

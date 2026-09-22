@@ -126,15 +126,15 @@ func normalizeAndValidate(cfg *pluginConfig) error {
 			return fmt.Errorf("quota-sources[%d].id %q: quota-url is required", i, src.ID)
 		}
 		switch src.Kind {
-		case "percent-windows", "balance", "grants", "coding-plan", "zhipu-plan":
+		case "percent-windows", "balance", "grants", "coding-plan", "zhipu-plan", "cline-plan":
 		default:
-			return fmt.Errorf("quota-sources[%d].id %q: kind must be percent-windows|balance|grants|coding-plan|zhipu-plan", i, src.ID)
+			return fmt.Errorf("quota-sources[%d].id %q: kind must be percent-windows|balance|grants|coding-plan|zhipu-plan|cline-plan", i, src.ID)
 		}
 	}
 	return nil
 }
 
-// defaultSources matches the three vendors the plugin ships with.
+// defaultSources matches the vendors the plugin ships with.
 func defaultSources() []QuotaSource {
 	return []QuotaSource{
 		{
@@ -176,6 +176,16 @@ func defaultSources() []QuotaSource {
 			QuotaURL: "https://open.bigmodel.cn/api/monitor/usage/quota/limit",
 			Auth:     "bearer",
 			Kind:     "zhipu-plan",
+		},
+		{
+			ID:   "cline",
+			Name: "Cline Pass",
+			// Cline Pass 订阅额度：普通 Cline API key（app.cline.bot → Settings →
+			// API Keys）即可查询，返回 5 小时/每周/每月三条已用百分比。
+			MatchBaseURLs: []string{"https://api.cline.bot"},
+			QuotaURL:      "https://api.cline.bot/api/v1/users/me/plan/usage-limits",
+			Auth:          "bearer",
+			Kind:          "cline-plan",
 		},
 	}
 }

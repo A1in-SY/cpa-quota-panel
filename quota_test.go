@@ -156,6 +156,56 @@ func TestParseZhipuPlanNoTokenLimits(t *testing.T) {
 	}
 }
 
+func TestParseClinePlan(t *testing.T) {
+	// Shape per api.cline.bot/api/v1/users/me/plan/usage-limits: Cline names the
+	// windows five_hour/weekly/monthly and reports percentUsed (0-100).
+	body := `{"success":true,"data":{"limits":[
+		{"type":"five_hour","percentUsed":12.5},
+		{"type":"weekly","percentUsed":24,"resetsAt":"2026-08-08T15:33:55.178045653Z"},
+		{"type":"monthly","percentUsed":6,"resetsAt":"2026-08-31T15:33:55Z"}
+	]}}`
+	out := &quotaData{Kind: "cline-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if out.Windows["rolling"].Percent != 12.5 || out.Windows["weekly"].Percent != 24 || out.Windows["monthly"].Percent != 6 {
+		t.Fatalf("windows = %+v", out.Windows)
+	}
+	// Cline stamps nanoseconds; the bar needs the second-precision RFC3339 the
+	// countdown JS parses.
+	if out.Windows["weekly"].ResetsAt != "2026-08-08T15:33:55Z" {
+		t.Fatalf("weekly resetsAt = %q", out.Windows["weekly"].ResetsAt)
+	}
+	if out.Windows["rolling"].ResetsAt != "" {
+		t.Fatalf("rolling resetsAt = %q, want empty (the 5-hour window omits it)", out.Windows["rolling"].ResetsAt)
+	}
+}
+
+func TestParseClinePlanWithoutSubscription(t *testing.T) {
+	// A key without an active ClinePass gets data:null; the card stays empty.
+	body := `{"success":true,"data":null}`
+	out := &quotaData{Kind: "cline-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("data:null must not error: %v", err)
+	}
+	if out.Windows != nil {
+		t.Fatalf("windows = %+v, want none", out.Windows)
+	}
+}
+
+func TestParseClinePlanEnvelopeError(t *testing.T) {
+	// Failures arrive as HTTP 200 + success=false.
+	body := `{"success":false,"error":"Unauthorized","data":null}`
+	out := &quotaData{Kind: "cline-plan"}
+	err := parseQuotaPayload(out, []byte(body))
+	if err == nil {
+		t.Fatal("success=false must error")
+	}
+	if !strings.Contains(err.Error(), "Unauthorized") {
+		t.Fatalf("err = %v", err)
+	}
+}
+
 func TestFmtDuration(t *testing.T) {
 	cases := []struct {
 		sec  int64

@@ -221,6 +221,10 @@ func parseQuotaPayload(out *quotaData, body []byte) error {
 		if err := parseZhipuPlan(out, body); err != nil {
 			return err
 		}
+	case "cline-plan":
+		if err := parseClinePlan(out, body); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported kind %q", out.Kind)
 	}
@@ -336,6 +340,82 @@ func zhipuResetRFC3339(millis int64) string {
 		return ""
 	}
 	return time.UnixMilli(millis).UTC().Format(time.RFC3339)
+}
+
+// clineLimitRow is one window of the ClinePass usage payload
+// (api.cline.bot/api/v1/users/me/plan/usage-limits). percentUsed is the used
+// share of the window — the same meaning the other vendors' bars take — and
+// resetsAt is RFC3339, absent for the rolling 5-hour window.
+type clineLimitRow struct {
+	Type        string  `json:"type"` // five_hour | weekly | monthly
+	PercentUsed float64 `json:"percentUsed"`
+	ResetsAt    string  `json:"resetsAt"`
+}
+
+// clineWindowKeys maps Cline's window names onto the three window keys the
+// dashboard renders, so the bars look exactly like the other vendors'.
+var clineWindowKeys = map[string]string{
+	"five_hour": "rolling",
+	"weekly":    "weekly",
+	"monthly":   "monthly",
+}
+
+// parseClinePlan decodes the {success,data,error} envelope the Cline API always
+// answers with: auth/plan failures arrive as HTTP 200 with success=false, and a
+// key without an active ClinePass returns data:null. The latter leaves the card
+// empty (the dashboard's existing 暂无额度数据 state) rather than erroring.
+func parseClinePlan(out *quotaData, body []byte) error {
+	var payload struct {
+		Success bool   `json:"success"`
+		Error   string `json:"error"`
+		Data    *struct {
+			Limits []clineLimitRow `json:"limits"`
+		} `json:"data"`
+	}
+	if errUnmarshal := json.Unmarshal(body, &payload); errUnmarshal != nil {
+		return fmt.Errorf("invalid cline-plan payload: %w", errUnmarshal)
+	}
+	if !payload.Success {
+		msg := strings.TrimSpace(payload.Error)
+		if msg == "" {
+			msg = "unknown error"
+		}
+		return fmt.Errorf("cline-plan error: %s", msg)
+	}
+	if payload.Data == nil {
+		return nil
+	}
+	windows := map[string]percentWindow{}
+	for _, l := range payload.Data.Limits {
+		key, ok := clineWindowKeys[l.Type]
+		if !ok {
+			continue
+		}
+		windows[key] = percentWindow{
+			Percent:  l.PercentUsed,
+			ResetsAt: clineResetRFC3339(l.ResetsAt),
+		}
+	}
+	if len(windows) == 0 {
+		return nil
+	}
+	out.Windows = windows
+	return nil
+}
+
+// clineResetRFC3339 trims Cline's nanosecond fractional seconds down to the
+// second-precision RFC3339 every other vendor's reset stamp already uses, so the
+// dashboard's countdown JS parses it instead of falling back to the raw string.
+func clineResetRFC3339(ts string) string {
+	ts = strings.TrimSpace(ts)
+	if ts == "" {
+		return ""
+	}
+	parsed, errParse := time.Parse(time.RFC3339Nano, ts)
+	if errParse != nil {
+		return ts
+	}
+	return parsed.UTC().Format(time.RFC3339)
 }
 
 func fmtNum(v any) string {
