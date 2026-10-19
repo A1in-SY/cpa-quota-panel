@@ -710,8 +710,16 @@ func renderWindow(b *strings.Builder, key string, w percentWindow) {
 	cls := toneClass(w.Percent)
 	remaining := 100 - w.Percent
 	label := map[string]string{"rolling": "5小时窗口", "weekly": "每周窗口", "monthly": "每月窗口"}[key]
+	remainingText := strconv.Itoa(percentInt(remaining))
+	usedText := strconv.Itoa(percentInt(w.Percent))
+	if w.Cap > 0 {
+		// Dollar windows move in small steps; one decimal keeps a fresh cycle
+		// from reading as "0% used" when a few cents are already spent.
+		remainingText = strconv.FormatFloat(remaining, 'f', 1, 64)
+		usedText = strconv.FormatFloat(w.Percent, 'f', 1, 64)
+	}
 	b.WriteString("<div class=\"win\"><div class=\"whead\"><span>" + label + "</span>")
-	b.WriteString("<span><b>剩余 " + strconv.Itoa(percentInt(remaining)) + "%</b> · 已用 " + strconv.Itoa(percentInt(w.Percent)) + "%")
+	b.WriteString("<span><b>剩余 " + remainingText + "%</b> · 已用 " + usedText + "%")
 	if w.Status == "rate-limited" {
 		b.WriteString(" · 限流")
 	}
@@ -816,7 +824,11 @@ func currencyPrefix(c string) string {
 // on the left, the plan/top-up/free split on the right.
 func renderCredits(b *strings.Builder, c *creditInfo) {
 	total := c.total()
-	b.WriteString("<div class=\"balance\"><div class=\"left\"><span class=\"caption\">剩余额度</span>")
+	caption := "剩余额度"
+	if c.Plan != "" {
+		caption += " · " + c.Plan
+	}
+	b.WriteString("<div class=\"balance\"><div class=\"left\"><span class=\"caption\">" + html.EscapeString(caption) + "</span>")
 	b.WriteString("<span class=\"amount")
 	if total < 3 {
 		b.WriteString(" red")

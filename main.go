@@ -202,8 +202,11 @@ func writeResponse(response *C.cliproxy_buffer, raw []byte) {
 	response.len = C.size_t(len(raw))
 }
 
-// callHost invokes a host callback through the C bridge and returns the decoded result envelope.
-func callHost(method string, payload any) (json.RawMessage, error) {
+// callHost invokes a host callback through the C bridge and returns the decoded
+// result envelope. It is a variable so tests can substitute the host bridge.
+var callHost = callHostBridge
+
+func callHostBridge(method string, payload any) (json.RawMessage, error) {
 	rawPayload, errMarshal := json.Marshal(payload)
 	if errMarshal != nil {
 		return nil, errMarshal

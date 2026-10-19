@@ -12,7 +12,7 @@ CLIProxyAPI 插件：**按厂商维度的只读额度面板**。
 - 服务端分页：每页默认 20 条（`page / page-size / vendor` 参数），厂商 tab 计数始终显示全量。
 - 合并规则：**apikey 完全相同**的条目（跨多个配置段亦然）合并为一条，并展示其关联的 AI 提供商类型标签（如 `codex, claude`）。
 - 厂商识别：每个厂商是"一个或多个 base-url 模式"（如 Deepseek API = `api.deepseek.com` 及 `/anthropic` 变体），命中任一即归入该厂商。
-- 额度展示：`percent-windows`（OpenCode Go 三窗口进度）、`balance`（deepseek 余额）、`coding-plan`（minimax coding plan 各 model 的当前周期/本周剩余）、`zhipu-plan`（智谱 GLM Coding Plan 的 5 小时/每周/MCP 每月额度，走 `open.bigmodel.cn/api/monitor/usage/quota/limit`，普通 API key 即可）、`cline-plan`（Cline Pass 订阅的 5 小时/每周/每月三条进度，走 `api.cline.bot/api/v1/users/me/plan/usage-limits`，普通 Cline API key 即可）、`commandcode-plan`（Command Code 订阅的 5 小时/每周美元窗口与剩余 credits，走 `api.commandcode.ai/alpha/billing/credits`，普通 API key 即可）。
+- 额度展示：`percent-windows`（OpenCode Go 三窗口进度）、`balance`（deepseek 余额）、`coding-plan`（minimax coding plan 各 model 的当前周期/本周剩余）、`zhipu-plan`（智谱 GLM Coding Plan 的 5 小时/每周/MCP 每月额度，走 `open.bigmodel.cn/api/monitor/usage/quota/limit`，普通 API key 即可）、`cline-plan`（Cline Pass 订阅的 5 小时/每周/每月三条进度，走 `api.cline.bot/api/v1/users/me/plan/usage-limits`，普通 Cline API key 即可）、`commandcode-plan`（Command Code 订阅的 5 小时/每周/每月美元窗口与剩余 credits，走 `api.commandcode.ai/alpha/billing/credits` + `alpha/billing/subscriptions`，普通 API key 即可）。
 
 ## 目录结构
 
@@ -50,6 +50,7 @@ docker run --rm --platform linux/amd64 -v "$PWD":/src -w /src golang:1.26 \
 - `openai-compatibility` 是"一个 base-url 下多个 key"（`api-key-entries`），扫描时会展开为每 key 一条。
 - Cline Pass 的 key 需以 `openai-compatibility`（base-url `https://api.cline.bot/api/v1`）之类的条目写进宿主 config 才在扫描范围内；该额度接口是订阅态接口，未订阅时返回 `data:null`，卡片显示「暂无额度数据」而非报错。
 - Command Code 的 base-url 为 `https://api.commandcode.ai/provider/v1`（任意子路径都按 `https://api.commandcode.ai` 前缀命中）；额度接口与 CLI `/usage` 同源，同一把 API key 即可查询。5 小时/每周窗口按美元计，卡片同时展示剩余 credits（套餐/充值/赠送）。
+- Command Code 的 credits 接口不下发月度总额，也不提供月度窗口：插件会额外请求 `/alpha/billing/subscriptions`，用 `planId` 映射公开的套餐月度额度后补一条「每月窗口」，重置时间取 `currentPeriodEnd`；接口若返回 `monthlyCreditsGranted` 则优先使用。未知或改名的套餐只显示剩余 credits，不伪造月度百分比；subscriptions 请求失败也不影响 5 小时/每周卡片。
 - miniMax 默认使用 `https://www.minimaxi.com/v1/api/openplatform/coding_plan/remains`（kind `coding-plan`），普通 `sk-cp-` key 即可；不同账号的额度接口如不一致可在 `quota-sources` 覆盖。
 - 看板刷新时重读 config（跟随热加载）；刷新与翻页都只查询**当前页显示条目**的额度缓存，`?refresh=1` 强制刷新当前页（点击「刷新」走同页异步更新，整页不跳转）。
 - **首次打开不再阻塞**：点开面板的请求只读缓存、立即返回壳页，未命中缓存/已过期的卡先渲染骨架，前端通过 `?partial=1&entry-idx=N` 逐条懒加载（并发 ≤6，卡片互不阻塞）；`?entry-idx=` 是否真查上游由缓存 TTL 决定（TTL 内直接回缓存）。整页 `?refresh=1` 才同步强制刷新当页。

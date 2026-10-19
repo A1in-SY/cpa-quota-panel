@@ -1,9 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
 
 func TestParsePercentWindows(t *testing.T) {
@@ -264,6 +268,168 @@ func TestParseCommandCodePlanNoData(t *testing.T) {
 	out := &quotaData{Kind: "commandcode-plan"}
 	if err := parseQuotaPayload(out, []byte(`{}`)); err == nil {
 		t.Fatal("payload without credits or window limits must error")
+	}
+}
+
+func TestParseCommandCodeSubscription(t *testing.T) {
+	// Shape per api.commandcode.ai/alpha/billing/subscriptions.
+	body := `{"success":true,"data":{"planId":"individual-goat","status":"active","currentPeriodStart":"2026-10-19T12:40:05.000Z","currentPeriodEnd":"2026-11-19T12:40:05.000Z"}}`
+	sub, err := parseCommandCodeSubscription([]byte(body))
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if sub.PlanID != "individual-goat" {
+		t.Fatalf("planId = %q", sub.PlanID)
+	}
+	if sub.CurrentPeriodEnd != "2026-11-19T12:40:05Z" {
+		t.Fatalf("period end = %q", sub.CurrentPeriodEnd)
+	}
+}
+
+func TestParseCommandCodeSubscriptionNoSubscription(t *testing.T) {
+	if _, err := parseCommandCodeSubscription([]byte(`{"success":true,"data":null}`)); err == nil {
+		t.Fatal("data:null must report no subscription")
+	}
+}
+
+func TestApplyCommandCodeSubscriptionAddsMonthlyWindow(t *testing.T) {
+	// Live credits payload: monthlyCredits is remaining, no grant field.
+	body := `{"credits":{"monthlyCredits":69.7527567329,"purchasedCredits":0,"freeCredits":0},
+		"windowLimits":{"fiveHour":{"used":0.2472432671,"cap":14},"weekly":{"used":0.2472432671,"cap":35}}}`
+	out := &quotaData{Kind: "commandcode-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	applyCommandCodeSubscription(out, commandCodeSubscription{
+		PlanID:           "individual-goat",
+		CurrentPeriodEnd: "2026-11-19T12:40:05Z",
+	})
+	m, ok := out.Windows["monthly"]
+	if !ok {
+		t.Fatalf("monthly window missing: %+v", out.Windows)
+	}
+	if m.Cap != 70 {
+		t.Fatalf("monthly cap = %v, want 70", m.Cap)
+	}
+	if m.Used < 0.2472 || m.Used > 0.2473 {
+		t.Fatalf("monthly used = %v, want ~0.2472", m.Used)
+	}
+	if m.Percent < 0.35 || m.Percent > 0.36 {
+		t.Fatalf("monthly percent = %v, want ~0.353", m.Percent)
+	}
+	if m.ResetsAt != "2026-11-19T12:40:05Z" {
+		t.Fatalf("monthly resetsAt = %q", m.ResetsAt)
+	}
+	if out.Credits == nil || out.Credits.Plan != "GOAT" || out.Credits.Granted != 70 {
+		t.Fatalf("credits = %+v", out.Credits)
+	}
+	// The rolling windows are untouched.
+	if out.Windows["rolling"].Cap != 14 || out.Windows["weekly"].Cap != 35 {
+		t.Fatalf("rolling windows changed: %+v", out.Windows)
+	}
+}
+
+func TestApplyCommandCodeSubscriptionUnknownPlan(t *testing.T) {
+	out := &quotaData{
+		Kind:    "commandcode-plan",
+		Credits: &creditInfo{Monthly: 5},
+	}
+	applyCommandCodeSubscription(out, commandCodeSubscription{PlanID: "individual-brand-new"})
+	if _, ok := out.Windows["monthly"]; ok {
+		t.Fatalf("unknown plan must not draw a monthly bar: %+v", out.Windows)
+	}
+	if out.Credits.Plan != "" {
+		t.Fatalf("unknown plan name = %q", out.Credits.Plan)
+	}
+}
+
+func TestApplyCommandCodeSubscriptionPrefersAPIGrant(t *testing.T) {
+	// monthlyCreditsGranted is authoritative when the API sends it.
+	out := &quotaData{
+		Kind:    "commandcode-plan",
+		Credits: &creditInfo{Monthly: 5, Granted: 10},
+	}
+	applyCommandCodeSubscription(out, commandCodeSubscription{PlanID: "individual-brand-new"})
+	m, ok := out.Windows["monthly"]
+	if !ok || m.Cap != 10 || m.Used != 5 || m.Percent != 50 {
+		t.Fatalf("monthly window = %+v (ok=%v), want cap 10 used 5 at 50%%", m, ok)
+	}
+}
+
+func TestApplyCommandCodeSubscriptionRejectsCatalogMismatch(t *testing.T) {
+	// A renamed/re-priced plan must not be forced into the stale catalog.
+	out := &quotaData{
+		Kind:    "commandcode-plan",
+		Credits: &creditInfo{Monthly: 80},
+	}
+	applyCommandCodeSubscription(out, commandCodeSubscription{PlanID: "individual-goat"})
+	if _, ok := out.Windows["monthly"]; ok {
+		t.Fatalf("mismatched catalog must not draw a monthly bar: %+v", out.Windows)
+	}
+}
+
+func TestCommandCodePlanURL(t *testing.T) {
+	cases := map[string]string{
+		"https://api.commandcode.ai/alpha/billing/credits":               "https://api.commandcode.ai/alpha/billing/subscriptions",
+		"https://api.commandcode.ai/alpha/billing/credits/":              "https://api.commandcode.ai/alpha/billing/subscriptions",
+		"https://api.commandcode.ai/alpha/billing/credits?orgId=org_123": "https://api.commandcode.ai/alpha/billing/subscriptions?orgId=org_123",
+		"https://example.com/custom":                                     "",
+	}
+	for in, want := range cases {
+		if got := commandCodePlanURL(in); got != want {
+			t.Fatalf("commandCodePlanURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// TestFetchOneQuotaCommandCodeAddsMonthlyWindow exercises the two-request
+// sequence through a stubbed host bridge: credits first, then subscriptions.
+func TestFetchOneQuotaCommandCodeAddsMonthlyWindow(t *testing.T) {
+	originalCallHost := callHost
+	defer func() { callHost = originalCallHost }()
+
+	var urls []string
+	callHost = func(method string, payload any) (json.RawMessage, error) {
+		req, ok := payload.(pluginapi.HTTPRequest)
+		if !ok {
+			return nil, fmt.Errorf("payload type %T", payload)
+		}
+		urls = append(urls, req.URL)
+		var body string
+		switch req.URL {
+		case "https://api.commandcode.ai/alpha/billing/credits":
+			body = `{"credits":{"monthlyCredits":69.75,"purchasedCredits":0,"freeCredits":0},"windowLimits":{"fiveHour":{"used":0.25,"cap":14},"weekly":{"used":0.25,"cap":35}}}`
+		case "https://api.commandcode.ai/alpha/billing/subscriptions":
+			body = `{"success":true,"data":{"planId":"individual-goat","currentPeriodEnd":"2026-11-19T12:40:05.000Z"}}`
+		default:
+			return nil, fmt.Errorf("unexpected URL %q", req.URL)
+		}
+		resp, errMarshal := json.Marshal(pluginapi.HTTPResponse{StatusCode: http.StatusOK, Body: []byte(body)})
+		if errMarshal != nil {
+			return nil, errMarshal
+		}
+		return resp, nil
+	}
+
+	rt := buildRuntimeForTest()
+	e := &scannedEntry{
+		Kind:     "commandcode-plan",
+		QuotaURL: "https://api.commandcode.ai/alpha/billing/credits",
+		APIKey:   "k",
+	}
+	out := fetchOneQuota(rt, e)
+	if out.Err != "" {
+		t.Fatalf("fetch error: %s", out.Err)
+	}
+	if len(urls) != 2 || urls[1] != "https://api.commandcode.ai/alpha/billing/subscriptions" {
+		t.Fatalf("requests = %v, want credits then subscriptions", urls)
+	}
+	m, ok := out.Windows["monthly"]
+	if !ok || m.Cap != 70 || m.Used != 0.25 {
+		t.Fatalf("monthly window = %+v (ok=%v)", m, ok)
+	}
+	if out.Credits == nil || out.Credits.Plan != "GOAT" {
+		t.Fatalf("credits = %+v", out.Credits)
 	}
 }
 

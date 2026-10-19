@@ -299,15 +299,16 @@ func TestRenderCommandCodeCard(t *testing.T) {
 		Windows: map[string]percentWindow{
 			"rolling": {Percent: 30, Used: 4.2, Cap: 14, ResetsAt: "2026-10-19T12:00:00Z"},
 			"weekly":  {Percent: 90, Used: 31.5, Cap: 35},
+			"monthly": {Percent: 0.35, Used: 0.2472, Cap: 70, ResetsAt: "2026-11-19T12:40:05Z"},
 		},
-		Credits: &creditInfo{Monthly: 38.5, Purchased: 10, Free: 1.5, Granted: 70},
+		Credits: &creditInfo{Monthly: 69.75, Purchased: 10, Free: 1.5, Granted: 70, Plan: "GOAT"},
 	}}}
 	out := renderGrid(page)
 	for _, want := range []string{
-		"5小时窗口", "每周窗口",
-		"已用 $4.20 / $14.00", "已用 $31.50 / $35.00",
-		"剩余额度", "$50.00",
-		"本月配额 <b>$70.00</b>", "套餐 <b>$38.50</b>",
+		"5小时窗口", "每周窗口", "每月窗口",
+		"已用 $4.20 / $14.00", "已用 $31.50 / $35.00", "已用 $0.25 / $70.00",
+		"剩余额度 · GOAT", "$81.25",
+		"本月配额 <b>$70.00</b>", "套餐 <b>$69.75</b>",
 		"充值 <b>$10.00</b>", "赠送 <b>$1.50</b>",
 	} {
 		if !strings.Contains(out, want) {

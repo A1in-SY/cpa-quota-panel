@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,12 +71,14 @@ func fmtDuration(seconds int64) string {
 
 // creditInfo holds Command Code's USD credit buckets. Monthly is the remaining
 // share of the plan's monthly grant; purchased and free credits sit alongside
-// it. Granted is the monthly allocation when the API reports it.
+// it. Granted is the monthly allocation (from the API when reported, otherwise
+// from the plan catalog) and Plan is the catalog display name.
 type creditInfo struct {
 	Monthly   float64
 	Purchased float64
 	Free      float64
 	Granted   float64
+	Plan      string
 }
 
 func (c *creditInfo) total() float64 {
@@ -133,6 +136,16 @@ func fetchOneQuota(rt *runtime, e *scannedEntry) *quotaData {
 	}
 	if errParse := parseQuotaPayload(out, resp.Body); errParse != nil {
 		out.Err = errParse.Error()
+		return out
+	}
+	// Command Code's credits payload carries the rolling windows and remaining
+	// credits but not the plan grant. A second, best-effort lookup resolves the
+	// plan and the billing-period end used by the monthly bar; a failure here
+	// leaves the card with its 5-hour/weekly data instead of erroring it.
+	if out.Kind == "commandcode-plan" {
+		if sub, ok := fetchCommandCodeSubscription(e, useKey); ok {
+			applyCommandCodeSubscription(out, sub)
+		}
 	}
 	return out
 }
@@ -535,6 +548,148 @@ func parseCommandCodePlan(out *quotaData, body []byte) error {
 		return fmt.Errorf("commandcode-plan payload has no credits or window limits")
 	}
 	return nil
+}
+
+type commandCodePlan struct {
+	Name    string
+	Monthly float64
+}
+
+// commandCodePlans maps the planId from /alpha/billing/subscriptions to the
+// published monthly credit allowance (USD). The credits endpoint reports only
+// what is left, so the catalog is what lets the dashboard draw a monthly bar.
+// Unknown or renamed plans omit the bar instead of inventing an allowance.
+var commandCodePlans = map[string]commandCodePlan{
+	"individual-go":     {Name: "Go", Monthly: 10},
+	"individual-go-v1":  {Name: "Go", Monthly: 10},
+	"individual-goat":   {Name: "GOAT", Monthly: 70},
+	"individual-pro":    {Name: "Pro", Monthly: 30},
+	"individual-pro-v1": {Name: "Pro", Monthly: 80},
+	"individual-max":    {Name: "Max", Monthly: 150},
+	"individual-ultra":  {Name: "Ultra", Monthly: 300},
+}
+
+type commandCodeSubscription struct {
+	PlanID           string
+	CurrentPeriodEnd string
+}
+
+// parseCommandCodeSubscription decodes /alpha/billing/subscriptions. The API
+// answers with {success,data}; data is null for accounts without an active
+// subscription, which simply means there is no monthly allowance to draw.
+func parseCommandCodeSubscription(body []byte) (commandCodeSubscription, error) {
+	var payload struct {
+		Success bool `json:"success"`
+		Data    *struct {
+			PlanID           string `json:"planId"`
+			CurrentPeriodEnd any    `json:"currentPeriodEnd"`
+		} `json:"data"`
+	}
+	if errUnmarshal := json.Unmarshal(body, &payload); errUnmarshal != nil {
+		return commandCodeSubscription{}, fmt.Errorf("invalid commandcode subscription payload: %w", errUnmarshal)
+	}
+	if !payload.Success {
+		return commandCodeSubscription{}, fmt.Errorf("commandcode subscription lookup failed")
+	}
+	if payload.Data == nil {
+		return commandCodeSubscription{}, fmt.Errorf("commandcode account has no subscription")
+	}
+	planID := strings.TrimSpace(payload.Data.PlanID)
+	if planID == "" {
+		return commandCodeSubscription{}, fmt.Errorf("commandcode subscription has no planId")
+	}
+	return commandCodeSubscription{
+		PlanID:           planID,
+		CurrentPeriodEnd: commandCodeResetRFC3339(payload.Data.CurrentPeriodEnd),
+	}, nil
+}
+
+// commandCodePlanURL derives the subscription endpoint from the configured
+// credits endpoint, so quota-sources overrides (including an orgId query) keep
+// working without a second config field. Custom URLs that do not end in
+// /billing/credits skip the lookup.
+func commandCodePlanURL(quotaURL string) string {
+	const suffix = "/billing/credits"
+	u, errParse := url.Parse(strings.TrimSpace(quotaURL))
+	if errParse != nil {
+		return ""
+	}
+	path := strings.TrimRight(u.Path, "/")
+	if !strings.HasSuffix(path, suffix) {
+		return ""
+	}
+	u.Path = strings.TrimSuffix(path, suffix) + "/billing/subscriptions"
+	return u.String()
+}
+
+// fetchCommandCodeSubscription is best-effort: any transport, auth or schema
+// problem returns ok=false and the card keeps its credits/window data.
+func fetchCommandCodeSubscription(e *scannedEntry, useKey string) (commandCodeSubscription, bool) {
+	url := commandCodePlanURL(e.QuotaURL)
+	if url == "" {
+		return commandCodeSubscription{}, false
+	}
+	req := pluginapi.HTTPRequest{
+		Method: "GET",
+		URL:    url,
+		Headers: http.Header{
+			"Authorization": []string{"Bearer " + useKey},
+			"Accept":        []string{"application/json"},
+			"User-Agent":    []string{userAgent},
+		},
+	}
+	raw, errCall := callHost(pluginabi.MethodHostHTTPDo, req)
+	if errCall != nil || len(raw) == 0 {
+		return commandCodeSubscription{}, false
+	}
+	var resp pluginapi.HTTPResponse
+	if errUnmarshal := json.Unmarshal(raw, &resp); errUnmarshal != nil || resp.StatusCode != http.StatusOK {
+		return commandCodeSubscription{}, false
+	}
+	sub, errParse := parseCommandCodeSubscription(resp.Body)
+	if errParse != nil {
+		return commandCodeSubscription{}, false
+	}
+	return sub, true
+}
+
+// applyCommandCodeSubscription adds the monthly window: the grant comes from
+// the credits payload when present, otherwise from the plan catalog. A catalog
+// entry that conflicts with the reported remaining credits is ignored so a
+// renamed plan cannot produce a fabricated percentage.
+func applyCommandCodeSubscription(out *quotaData, sub commandCodeSubscription) {
+	if out == nil || out.Credits == nil {
+		return
+	}
+	plan, known := commandCodePlans[strings.ToLower(strings.TrimSpace(sub.PlanID))]
+	grant := out.Credits.Granted
+	if grant <= 0 && known {
+		grant = plan.Monthly
+	}
+	if grant <= 0 || out.Credits.Monthly > grant+0.01 {
+		return
+	}
+	if known {
+		out.Credits.Plan = plan.Name
+	}
+	out.Credits.Granted = grant
+	used := grant - out.Credits.Monthly
+	if used < 0 {
+		used = 0
+	}
+	percent := used / grant * 100
+	if percent > 100 {
+		percent = 100
+	}
+	if out.Windows == nil {
+		out.Windows = map[string]percentWindow{}
+	}
+	out.Windows["monthly"] = percentWindow{
+		Percent:  percent,
+		ResetsAt: sub.CurrentPeriodEnd,
+		Used:     used,
+		Cap:      grant,
+	}
 }
 
 // commandCodeWindowPercent converts a used/cap dollar pair into the percentage
