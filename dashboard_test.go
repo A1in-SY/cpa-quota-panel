@@ -287,6 +287,18 @@ func TestFragmentJSONKeepsEntryIdxZero(t *testing.T) {
 	}
 }
 
+// TestCommandCodeBranding pins the official Command Code knot and its black
+// app-icon tile (the previous placeholder was a different "cmd" glyph).
+func TestCommandCodeBranding(t *testing.T) {
+	icon := vendorIcon("commandcode")
+	if !strings.Contains(icon, "M98.8049 27.6163") {
+		t.Fatalf("commandcode icon is not the official knot: %q", icon)
+	}
+	if color := vendorColor("commandcode"); color != "#000000" {
+		t.Fatalf("commandcode tile color = %q, want #000000", color)
+	}
+}
+
 // TestRenderCommandCodeCard: Command Code reports USD windows plus credit
 // buckets, so the card must show the dollar spend next to each percentage and
 // the remaining credits below the bars.
