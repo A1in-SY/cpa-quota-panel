@@ -21,6 +21,7 @@ type pageEntry struct {
 	ProviderTypes []string
 	Windows       map[string]percentWindow
 	Balance       *balanceInfo
+	Credits       *creditInfo
 	Grants        []grantRow
 	Models        []modelPlan
 	Err           string
@@ -94,6 +95,10 @@ func vendorIcon(id string) string {
 		// (dark-background variant), used verbatim in its native 112x112 coordinate
 		// system; white glyph on the vendor tile.
 		return `<svg viewBox="0 0 112 112" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M56 3.99805L56.0001 0.298047H56V3.99805ZM68 15.708L71.7 15.7081V15.708H68ZM67.4932 20L63.8665 19.2671L62.9706 23.7H67.4932V20ZM84 20L84 16.3H84V20ZM95.2002 44.7998H91.5002V46.2066L92.4349 47.258L95.2002 44.7998ZM107.527 58.667L110.293 56.2088L110.293 56.2088L107.527 58.667ZM107.527 59.7305L110.293 62.1887L110.293 62.1883L107.527 59.7305ZM95.2002 73.5977L92.4349 71.1394L91.5002 72.1909V73.5977H95.2002ZM95.2002 87.2002L98.9002 87.2002V87.2002H95.2002ZM84 98.4004V102.1H84L84 98.4004ZM16.7998 87.2002H13.0998V87.2002L16.7998 87.2002ZM16.7998 73.5986H20.4998V72.1918L19.5651 71.1404L16.7998 73.5986ZM4.47168 59.7305L1.70627 62.1886L1.70635 62.1887L4.47168 59.7305ZM4.47168 58.667L7.23709 61.1251L7.23709 61.1251L4.47168 58.667ZM16.7998 44.7979L19.5652 47.256L20.4998 46.2046V44.7979H16.7998ZM44.5068 20V23.7H49.0294L48.1335 19.267L44.5068 20ZM44 15.708H40.3V15.7081L44 15.708ZM56 3.99805L55.9999 7.69805C60.6814 7.69818 64.3 11.3247 64.3 15.708H68H71.7C71.7 7.04515 64.5731 0.298294 56.0001 0.298047L56 3.99805ZM68 15.708L64.3 15.7079C64.3 16.6154 64.1616 17.8066 63.8665 19.2671L67.4932 20L71.1198 20.7329C71.4693 19.004 71.6999 17.2864 71.7 15.7081L68 15.708ZM67.4932 20V23.7H84V20V16.3H67.4932V20ZM84 20L84 23.7C88.1421 23.7001 91.5002 27.0582 91.5002 31.2002H95.2002H98.9002C98.9002 22.9712 92.2289 16.3001 84 16.3L84 20ZM95.2002 31.2002H91.5002V44.7998H95.2002H98.9002V31.2002H95.2002ZM95.2002 44.7998L92.4349 47.258L104.762 61.1252L107.527 58.667L110.293 56.2088L97.9655 42.3416L95.2002 44.7998ZM107.527 58.667L104.762 61.1251C103.785 60.026 103.786 58.371 104.762 57.2727L107.527 59.7305L110.293 62.1883C111.808 60.4837 111.809 57.9141 110.293 56.2088L107.527 58.667ZM107.527 59.7305L104.762 57.2722L92.4349 71.1394L95.2002 73.5977L97.9655 76.0559L110.293 62.1887L107.527 59.7305ZM95.2002 73.5977H91.5002V87.2002H95.2002H98.9002V73.5977H95.2002ZM95.2002 87.2002L91.5002 87.2002C91.5002 91.3422 88.1421 94.7003 84 94.7004L84 98.4004L84 102.1C92.2289 102.1 98.9001 95.4292 98.9002 87.2002L95.2002 87.2002ZM84 98.4004V94.7004H28V98.4004V102.1H84V98.4004ZM28 98.4004V94.7004C23.8579 94.7004 20.4998 91.3423 20.4998 87.2002L16.7998 87.2002L13.0998 87.2002C13.0998 95.4292 19.771 102.1 28 102.1V98.4004ZM16.7998 87.2002H20.4998V73.5986H16.7998H13.0998V87.2002H16.7998ZM16.7998 73.5986L19.5651 71.1404L7.23701 57.2722L4.47168 59.7305L1.70635 62.1887L14.0345 76.0569L16.7998 73.5986ZM4.47168 59.7305L7.23709 57.2723C8.21378 58.3711 8.21378 60.0264 7.23709 61.1251L4.47168 58.667L1.70627 56.2088C0.190721 57.9138 0.190721 60.4836 1.70627 62.1886L4.47168 59.7305ZM4.47168 58.667L7.23709 61.1251L19.5652 47.256L16.7998 44.7979L14.0344 42.3397L1.70627 56.2088L4.47168 58.667ZM16.7998 44.7979H20.4998V31.2002H16.7998H13.0998V44.7979H16.7998ZM16.7998 31.2002H20.4998C20.4998 27.0581 23.8579 23.7 28 23.7V20V16.3C19.771 16.3 13.0998 22.9712 13.0998 31.2002H16.7998ZM28 20V23.7H44.5068V20V16.3H28V20ZM44.5068 20L48.1335 19.267C47.8384 17.8066 47.7 16.6154 47.7 15.7079L44 15.708L40.3 15.7081C40.3001 17.2864 40.5307 19.0039 40.8802 20.733L44.5068 20ZM44 15.708H47.7C47.7 11.3244 51.3185 7.69805 56 7.69805V3.99805V0.298047C47.4267 0.298047 40.3 7.04514 40.3 15.708H44Z" fill="#fff"/><rect x="65.5996" y="44.8008" width="9.6" height="28.8" rx="4.8" fill="#fff"/><rect x="36.8008" y="44.8008" width="9.6" height="28.8" rx="4.8" fill="#fff"/></svg>`
+	case "commandcode":
+		// Command Code mark — the rounded "cmd" glyph used on commandcode.ai,
+		// drawn in its native 100x100 coordinate system; white on the vendor tile.
+		return `<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M38 38H27C20.925 38 16 33.075 16 27C16 20.925 20.925 16 27 16C33.075 16 38 20.925 38 27V73C38 79.075 33.075 84 27 84C20.925 84 16 79.075 16 73C16 66.925 20.925 62 27 62H73C79.075 62 84 66.925 84 73C84 79.075 79.075 84 73 84C66.925 84 62 79.075 62 73V27C62 20.925 66.925 16 73 16C79.075 16 84 20.925 84 27C84 33.075 79.075 38 73 38H38V62" stroke="#fff" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/></svg>`
 	default:
 		return ""
 	}
@@ -114,6 +119,9 @@ func vendorColor(id string) string {
 	case "cline":
 		// The mark's own ink, taken from the official light-logo asset (#1C1C24).
 		return "#1C1C24"
+	case "commandcode":
+		// Command Code's brand accent (from its provider metadata).
+		return "#8C4EDD"
 	default:
 		return "#3b82f6"
 	}
@@ -261,6 +269,7 @@ func buildPageData(rt *runtime, view pageView) pageData {
 			pe.Err = d.Err
 			pe.Windows = d.Windows
 			pe.Balance = d.Balance
+			pe.Credits = d.Credits
 			pe.Grants = d.Grants
 			pe.Models = d.Models
 			if d.FetchedAt > latestFetch {
@@ -671,6 +680,11 @@ func renderEntry(b *strings.Builder, e pageEntry) {
 				}
 				renderWindow(b, key, w)
 			}
+			if e.Credits != nil {
+				renderCredits(b, e.Credits)
+			}
+		case e.Credits != nil:
+			renderCredits(b, e.Credits)
 		case e.Balance != nil:
 			renderBalance(b, e.Balance)
 		case len(e.Grants) > 0:
@@ -703,7 +717,18 @@ func renderWindow(b *strings.Builder, key string, w percentWindow) {
 	}
 	b.WriteString("</span></div>\n")
 	b.WriteString("<div class=\"bar\"><i class=\"" + cls + "\" style=\"width:" + strconv.Itoa(percentInt(remaining)) + "%\"></i></div>\n")
-	if w.ResetsAt != "" {
+	if w.Cap > 0 {
+		// Dollar-denominated windows (Command Code) show the absolute spend next
+		// to the reset stamp, the same pair the vendor's own /usage prints.
+		b.WriteString("<div class=\"reset\">已用 " + fmtUSD(w.Used) + " / " + fmtUSD(w.Cap))
+		if w.ResetsAt != "" {
+			b.WriteString(" · 重置：<span data-reset=\"" + html.EscapeString(w.ResetsAt) + "\"></span>")
+		}
+		if w.Status == "rate-limited" {
+			b.WriteString(" · 等待自动恢复")
+		}
+		b.WriteString("</div>\n")
+	} else if w.ResetsAt != "" {
 		b.WriteString("<div class=\"reset\">重置：<span data-reset=\"" + html.EscapeString(w.ResetsAt) + "\"></span>")
 		if w.Status == "rate-limited" {
 			b.WriteString(" · 等待自动恢复")
@@ -785,6 +810,34 @@ func currencyPrefix(c string) string {
 		}
 		return c + " "
 	}
+}
+
+// renderCredits renders Command Code's USD credit buckets: the total remaining
+// on the left, the plan/top-up/free split on the right.
+func renderCredits(b *strings.Builder, c *creditInfo) {
+	total := c.total()
+	b.WriteString("<div class=\"balance\"><div class=\"left\"><span class=\"caption\">剩余额度</span>")
+	b.WriteString("<span class=\"amount")
+	if total < 3 {
+		b.WriteString(" red")
+	}
+	b.WriteString("\">" + fmtUSD(total) + "</span></div>")
+	b.WriteString("<div class=\"break\">")
+	if c.Granted > 0 {
+		b.WriteString("<span>本月配额 <b>" + fmtUSD(c.Granted) + "</b></span>")
+	}
+	b.WriteString("<span>套餐 <b>" + fmtUSD(c.Monthly) + "</b></span>")
+	if c.Purchased != 0 {
+		b.WriteString("<span>充值 <b>" + fmtUSD(c.Purchased) + "</b></span>")
+	}
+	if c.Free != 0 {
+		b.WriteString("<span>赠送 <b>" + fmtUSD(c.Free) + "</b></span>")
+	}
+	b.WriteString("</div></div>\n")
+}
+
+func fmtUSD(v float64) string {
+	return "$" + strconv.FormatFloat(v, 'f', 2, 64)
 }
 
 func dashboardJS() string {

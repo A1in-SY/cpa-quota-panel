@@ -206,6 +206,67 @@ func TestParseClinePlanEnvelopeError(t *testing.T) {
 	}
 }
 
+func TestParseCommandCodePlan(t *testing.T) {
+	// Shape per api.commandcode.ai/alpha/billing/credits (the endpoint behind
+	// the `cmd` CLI's /usage): USD credit buckets plus two rolling windows.
+	body := `{
+		"credits":{"monthlyCredits":38.5,"purchasedCredits":10,"freeCredits":1.5,"monthlyCreditsGranted":70},
+		"windowLimits":{
+			"fiveHour":{"used":4.2,"cap":14,"resetAt":"2026-10-19T12:00:00.123456789Z"},
+			"weekly":{"used":31.5,"cap":35,"resetAt":1785000000000}
+		}
+	}`
+	out := &quotaData{Kind: "commandcode-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := out.Windows["rolling"].Percent; got < 29.9 || got > 30.1 {
+		t.Fatalf("rolling percent = %v, want 30", got)
+	}
+	if out.Windows["weekly"].Percent != 90 {
+		t.Fatalf("weekly = %+v", out.Windows["weekly"])
+	}
+	if out.Windows["rolling"].Used != 4.2 || out.Windows["rolling"].Cap != 14 {
+		t.Fatalf("rolling dollars = %+v", out.Windows["rolling"])
+	}
+	// ISO reset stamps are cut to the second precision the countdown JS parses.
+	if out.Windows["rolling"].ResetsAt != "2026-10-19T12:00:00Z" {
+		t.Fatalf("rolling resetsAt = %q", out.Windows["rolling"].ResetsAt)
+	}
+	if out.Windows["weekly"].ResetsAt == "" {
+		t.Fatalf("weekly resetsAt missing: %+v", out.Windows["weekly"])
+	}
+	if out.Credits == nil || out.Credits.Monthly != 38.5 || out.Credits.Purchased != 10 ||
+		out.Credits.Free != 1.5 || out.Credits.Granted != 70 {
+		t.Fatalf("credits = %+v", out.Credits)
+	}
+}
+
+func TestParseCommandCodePlanNestedWindowLimits(t *testing.T) {
+	// Older payloads nest windowLimits under credits and may quote numbers.
+	body := `{"credits":{"monthlyCredits":"12.25","windowLimits":{"fiveHour":{"used":"1.5","cap":"14"}}}}`
+	out := &quotaData{Kind: "commandcode-plan"}
+	if err := parseQuotaPayload(out, []byte(body)); err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if got := out.Windows["rolling"].Percent; got < 10.7 || got > 10.8 {
+		t.Fatalf("rolling percent = %v, want ~10.71", got)
+	}
+	if _, ok := out.Windows["weekly"]; ok {
+		t.Fatalf("weekly must be absent when the payload omits it: %+v", out.Windows)
+	}
+	if out.Credits == nil || out.Credits.Monthly != 12.25 {
+		t.Fatalf("credits = %+v", out.Credits)
+	}
+}
+
+func TestParseCommandCodePlanNoData(t *testing.T) {
+	out := &quotaData{Kind: "commandcode-plan"}
+	if err := parseQuotaPayload(out, []byte(`{}`)); err == nil {
+		t.Fatal("payload without credits or window limits must error")
+	}
+}
+
 func TestFmtDuration(t *testing.T) {
 	cases := []struct {
 		sec  int64

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,10 @@ type percentWindow struct {
 	Status   string  `json:"status"`
 	Percent  float64 `json:"percent"`
 	ResetsAt string  `json:"resetsAt"`
+	// Used and Cap carry the absolute spend/limit pair when the vendor reports
+	// dollars instead of only a percentage (Command Code's rolling windows).
+	Used float64 `json:"used,omitempty"`
+	Cap  float64 `json:"cap,omitempty"`
 }
 
 type balanceInfo struct {
@@ -63,11 +68,26 @@ func fmtDuration(seconds int64) string {
 	return fmt.Sprintf("%d 小时 %d 分钟", hours, minutes)
 }
 
+// creditInfo holds Command Code's USD credit buckets. Monthly is the remaining
+// share of the plan's monthly grant; purchased and free credits sit alongside
+// it. Granted is the monthly allocation when the API reports it.
+type creditInfo struct {
+	Monthly   float64
+	Purchased float64
+	Free      float64
+	Granted   float64
+}
+
+func (c *creditInfo) total() float64 {
+	return c.Monthly + c.Purchased + c.Free
+}
+
 // quotaData is the parsed quota result for one scanned entry.
 type quotaData struct {
 	Kind      string
 	Windows   map[string]percentWindow
 	Balance   *balanceInfo
+	Credits   *creditInfo
 	Grants    []grantRow
 	Models    []modelPlan
 	FetchedAt int64
@@ -223,6 +243,10 @@ func parseQuotaPayload(out *quotaData, body []byte) error {
 		}
 	case "cline-plan":
 		if err := parseClinePlan(out, body); err != nil {
+			return err
+		}
+	case "commandcode-plan":
+		if err := parseCommandCodePlan(out, body); err != nil {
 			return err
 		}
 	default:
@@ -416,6 +440,164 @@ func clineResetRFC3339(ts string) string {
 		return ts
 	}
 	return parsed.UTC().Format(time.RFC3339)
+}
+
+// flexFloat accepts a JSON number or a numeric string. The Command Code
+// billing routes have been observed returning both spellings across plans.
+type flexFloat struct {
+	Value float64
+	Set   bool
+}
+
+func (f *flexFloat) UnmarshalJSON(data []byte) error {
+	raw := strings.TrimSpace(string(data))
+	if raw == "" || raw == "null" {
+		return nil
+	}
+	if strings.HasPrefix(raw, `"`) {
+		var s string
+		if errUnmarshal := json.Unmarshal(data, &s); errUnmarshal != nil {
+			return errUnmarshal
+		}
+		raw = strings.TrimSpace(s)
+		if raw == "" {
+			return nil
+		}
+	}
+	v, errParse := strconv.ParseFloat(raw, 64)
+	if errParse != nil {
+		return errParse
+	}
+	f.Value, f.Set = v, true
+	return nil
+}
+
+// commandCodeWindow is one rolling window of Command Code's billing payload:
+// used/cap are USD amounts, resetAt is either an ISO stamp or epoch seconds.
+type commandCodeWindow struct {
+	Used    flexFloat `json:"used"`
+	Cap     flexFloat `json:"cap"`
+	ResetAt any       `json:"resetAt"`
+}
+
+type commandCodeWindowSet struct {
+	FiveHour *commandCodeWindow `json:"fiveHour"`
+	Weekly   *commandCodeWindow `json:"weekly"`
+}
+
+// parseCommandCodePlan decodes GET /alpha/billing/credits (api.commandcode.ai),
+// the endpoint behind the CLI's /usage command: USD credit buckets plus the
+// rolling 5-hour and weekly limit windows. The windowLimits object sits at the
+// payload root in current responses and under credits in some older ones.
+func parseCommandCodePlan(out *quotaData, body []byte) error {
+	var payload struct {
+		Credits *struct {
+			MonthlyCredits        flexFloat             `json:"monthlyCredits"`
+			PurchasedCredits      flexFloat             `json:"purchasedCredits"`
+			FreeCredits           flexFloat             `json:"freeCredits"`
+			MonthlyCreditsGranted flexFloat             `json:"monthlyCreditsGranted"`
+			WindowLimits          *commandCodeWindowSet `json:"windowLimits"`
+		} `json:"credits"`
+		WindowLimits *commandCodeWindowSet `json:"windowLimits"`
+	}
+	if errUnmarshal := json.Unmarshal(body, &payload); errUnmarshal != nil {
+		return fmt.Errorf("invalid commandcode-plan payload: %w", errUnmarshal)
+	}
+
+	limitSet := payload.WindowLimits
+	if limitSet == nil && payload.Credits != nil {
+		limitSet = payload.Credits.WindowLimits
+	}
+	windows := map[string]percentWindow{}
+	if limitSet != nil {
+		if w, ok := commandCodeWindowPercent(limitSet.FiveHour); ok {
+			windows["rolling"] = w
+		}
+		if w, ok := commandCodeWindowPercent(limitSet.Weekly); ok {
+			windows["weekly"] = w
+		}
+	}
+	if len(windows) > 0 {
+		out.Windows = windows
+	}
+
+	if c := payload.Credits; c != nil &&
+		(c.MonthlyCredits.Set || c.PurchasedCredits.Set || c.FreeCredits.Set) {
+		out.Credits = &creditInfo{
+			Monthly:   c.MonthlyCredits.Value,
+			Purchased: c.PurchasedCredits.Value,
+			Free:      c.FreeCredits.Value,
+			Granted:   c.MonthlyCreditsGranted.Value,
+		}
+	}
+
+	if out.Windows == nil && out.Credits == nil {
+		return fmt.Errorf("commandcode-plan payload has no credits or window limits")
+	}
+	return nil
+}
+
+// commandCodeWindowPercent converts a used/cap dollar pair into the percentage
+// shape every other vendor's bar uses. A missing or zero cap means the plan has
+// no such window (for example a free account), so the bar is omitted instead of
+// rendering as 0% used.
+func commandCodeWindowPercent(w *commandCodeWindow) (percentWindow, bool) {
+	if w == nil || !w.Cap.Set || w.Cap.Value <= 0 {
+		return percentWindow{}, false
+	}
+	used := 0.0
+	if w.Used.Set && w.Used.Value > 0 {
+		used = w.Used.Value
+	}
+	percent := used / w.Cap.Value * 100
+	if percent < 0 {
+		percent = 0
+	}
+	if percent > 100 {
+		percent = 100
+	}
+	return percentWindow{
+		Percent:  percent,
+		ResetsAt: commandCodeResetRFC3339(w.ResetAt),
+		Used:     used,
+		Cap:      w.Cap.Value,
+	}, true
+}
+
+// commandCodeResetRFC3339 normalizes the rolling window reset stamp: ISO
+// strings are cut to second precision, epoch numbers may be seconds or millis.
+func commandCodeResetRFC3339(v any) string {
+	switch t := v.(type) {
+	case string:
+		s := strings.TrimSpace(t)
+		if s == "" {
+			return ""
+		}
+		if parsed, errParse := time.Parse(time.RFC3339Nano, s); errParse == nil {
+			return parsed.UTC().Format(time.RFC3339)
+		}
+		if epoch, errEpoch := strconv.ParseFloat(s, 64); errEpoch == nil {
+			return commandCodeEpochRFC3339(epoch)
+		}
+		return s
+	case float64:
+		return commandCodeEpochRFC3339(t)
+	case json.Number:
+		if epoch, errEpoch := t.Float64(); errEpoch == nil {
+			return commandCodeEpochRFC3339(epoch)
+		}
+	}
+	return ""
+}
+
+func commandCodeEpochRFC3339(epoch float64) string {
+	if epoch <= 0 {
+		return ""
+	}
+	if epoch > 1e10 {
+		epoch /= 1000
+	}
+	return time.Unix(int64(epoch), 0).UTC().Format(time.RFC3339)
 }
 
 func fmtNum(v any) string {

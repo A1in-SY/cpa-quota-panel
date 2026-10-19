@@ -126,9 +126,9 @@ func normalizeAndValidate(cfg *pluginConfig) error {
 			return fmt.Errorf("quota-sources[%d].id %q: quota-url is required", i, src.ID)
 		}
 		switch src.Kind {
-		case "percent-windows", "balance", "grants", "coding-plan", "zhipu-plan", "cline-plan":
+		case "percent-windows", "balance", "grants", "coding-plan", "zhipu-plan", "cline-plan", "commandcode-plan":
 		default:
-			return fmt.Errorf("quota-sources[%d].id %q: kind must be percent-windows|balance|grants|coding-plan|zhipu-plan|cline-plan", i, src.ID)
+			return fmt.Errorf("quota-sources[%d].id %q: kind must be percent-windows|balance|grants|coding-plan|zhipu-plan|cline-plan|commandcode-plan", i, src.ID)
 		}
 	}
 	return nil
@@ -186,6 +186,17 @@ func defaultSources() []QuotaSource {
 			QuotaURL:      "https://api.cline.bot/api/v1/users/me/plan/usage-limits",
 			Auth:          "bearer",
 			Kind:          "cline-plan",
+		},
+		{
+			ID:   "commandcode",
+			Name: "Command Code",
+			// Command Code 订阅额度：普通 API key 即可查询 CLI /usage 同源的
+			// /alpha/billing/credits 接口，返回 5 小时/每周美元窗口与剩余 credits。
+			// 提供方 base-url 为 https://api.commandcode.ai/provider/v1，前缀匹配即可。
+			MatchBaseURLs: []string{"https://api.commandcode.ai"},
+			QuotaURL:      "https://api.commandcode.ai/alpha/billing/credits",
+			Auth:          "bearer",
+			Kind:          "commandcode-plan",
 		},
 	}
 }

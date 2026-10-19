@@ -286,3 +286,32 @@ func TestFragmentJSONKeepsEntryIdxZero(t *testing.T) {
 		t.Fatalf("entryIdx zero must be serialized, got %s", raw)
 	}
 }
+
+// TestRenderCommandCodeCard: Command Code reports USD windows plus credit
+// buckets, so the card must show the dollar spend next to each percentage and
+// the remaining credits below the bars.
+func TestRenderCommandCodeCard(t *testing.T) {
+	page := pageData{Entries: []pageEntry{{
+		VendorID:   "commandcode",
+		VendorName: "Command Code",
+		KeyTail:    "key-123456",
+		Fresh:      true,
+		Windows: map[string]percentWindow{
+			"rolling": {Percent: 30, Used: 4.2, Cap: 14, ResetsAt: "2026-10-19T12:00:00Z"},
+			"weekly":  {Percent: 90, Used: 31.5, Cap: 35},
+		},
+		Credits: &creditInfo{Monthly: 38.5, Purchased: 10, Free: 1.5, Granted: 70},
+	}}}
+	out := renderGrid(page)
+	for _, want := range []string{
+		"5小时窗口", "每周窗口",
+		"已用 $4.20 / $14.00", "已用 $31.50 / $35.00",
+		"剩余额度", "$50.00",
+		"本月配额 <b>$70.00</b>", "套餐 <b>$38.50</b>",
+		"充值 <b>$10.00</b>", "赠送 <b>$1.50</b>",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("card missing %q:\n%s", want, out)
+		}
+	}
+}

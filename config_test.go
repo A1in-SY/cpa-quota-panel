@@ -16,7 +16,7 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 	if cfg.CacheTTL != 300 {
 		t.Fatalf("default cache-ttl = %d", cfg.CacheTTL)
 	}
-	if len(cfg.Sources) != 5 {
+	if len(cfg.Sources) != 6 {
 		t.Fatalf("default sources = %d", len(cfg.Sources))
 	}
 	ids := map[string]bool{}
@@ -26,7 +26,7 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 			t.Fatalf("default source incomplete: %+v", s)
 		}
 	}
-	if !ids["opencode"] || !ids["deepseek"] || !ids["minimax"] || !ids["zhipu"] || !ids["cline"] {
+	if !ids["opencode"] || !ids["deepseek"] || !ids["minimax"] || !ids["zhipu"] || !ids["cline"] || !ids["commandcode"] {
 		t.Fatalf("default sources missing vendor: %v", ids)
 	}
 	for _, s := range cfg.Sources {
@@ -43,7 +43,7 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 				t.Fatalf("default zhipu match-base-urls = %v, want 3 patterns", s.MatchBaseURLs)
 			}
 			want := map[string]bool{
-				"https://open.bigmodel.cn/api/anthropic":       true,
+				"https://open.bigmodel.cn/api/anthropic":      true,
 				"https://open.bigmodel.cn/api/coding/paas/v4": true,
 				"https://open.bigmodel.cn/api/v1":             true,
 			}
@@ -62,6 +62,14 @@ func TestNormalizeAndValidateDefaults(t *testing.T) {
 			}
 			if len(s.MatchBaseURLs) != 1 || s.MatchBaseURLs[0] != "https://api.cline.bot" {
 				t.Fatalf("default cline match-base-urls = %v", s.MatchBaseURLs)
+			}
+		}
+		if s.ID == "commandcode" {
+			if s.Kind != "commandcode-plan" || !strings.Contains(s.QuotaURL, "/alpha/billing/credits") {
+				t.Fatalf("default commandcode source = kind %q url %q, want commandcode-plan credits endpoint", s.Kind, s.QuotaURL)
+			}
+			if len(s.MatchBaseURLs) != 1 || s.MatchBaseURLs[0] != "https://api.commandcode.ai" {
+				t.Fatalf("default commandcode match-base-urls = %v", s.MatchBaseURLs)
 			}
 		}
 	}
